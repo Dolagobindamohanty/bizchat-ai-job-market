@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from bizchat.analytics import prepare_jobs, recommendations, skill_demand
+from collector.validate import validation_report
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -89,6 +90,16 @@ class LearningRecommendation(BaseModel):
     score: float = 0.0
 
 
+class ValidationResponse(BaseModel):
+    api_status: str
+    dataset_row_count: int
+    required_columns_present: bool
+    duplicate_key_count: int
+    missing_source_urls: int
+    invalid_timestamps: int
+    deployment_safe: bool
+
+
 app = FastAPI(title="BizChat API", version="2.0.0")
 app.add_middleware(
     CORSMiddleware,
@@ -132,6 +143,21 @@ FilterEnd = Annotated[date | None, Query(description="Latest posted date")]
 @app.get("/api/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/api/validation", response_model=ValidationResponse)
+def validation() -> ValidationResponse:
+    """Return the network-free readiness checks for the deployed dataset."""
+    report = validation_report(DATA_PATH)
+    return ValidationResponse(
+        api_status="ok",
+        dataset_row_count=report.dataset_row_count,
+        required_columns_present=report.required_columns_present,
+        duplicate_key_count=report.duplicate_key_count,
+        missing_source_urls=report.missing_source_urls,
+        invalid_timestamps=report.invalid_timestamps,
+        deployment_safe=report.deployment_safe,
+    )
 
 
 @app.get("/api/overview", response_model=Overview)

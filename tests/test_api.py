@@ -1,5 +1,8 @@
+import csv
+
 from fastapi.testclient import TestClient
 
+import api.main as api_main
 from api.main import app, load_jobs
 
 
@@ -50,3 +53,43 @@ def test_recommendations_accept_profile_inputs_and_return_score():
     assert all(item["skill"] != "Python" for item in recommendations)
     assert all(0 <= item["score"] <= 100 for item in recommendations)
     assert all("median salary" in item["reason"] for item in recommendations)
+
+
+def test_validation_reports_healthy_dataset():
+    response = client.get("/api/validation")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "api_status": "ok",
+        "dataset_row_count": 20,
+        "required_columns_present": True,
+        "duplicate_key_count": 0,
+        "missing_source_urls": 0,
+        "invalid_timestamps": 0,
+        "deployment_safe": True,
+    }
+
+
+def test_validation_reports_invalid_data_without_network_or_secrets(tmp_path, monkeypatch):
+    path = tmp_path / "jobs.csv"
+    with path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=["job_id", "title", "source", "source_url", "posted_date", "collected_at"],
+        )
+        writer.writeheader()
+        writer.writerow({"job_id": "J001", "title": "One", "source": "Feed", "source_url": "", "posted_date": "2026-01-01", "collected_at": "not-a-timestamp"})
+        writer.writerow({"job_id": "J001", "title": "Duplicate", "source": "Feed", "source_url": "ftp://invalid.example/job", "posted_date": "2026-01-01", "collected_at": "2026-01-01T00:00:00"})
+
+    monkeypatch.setattr(api_main, "DATA_PATH", path)
+    response = client.get("/api/validation")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["api_status"] == "ok"
+    assert body["dataset_row_count"] == 2
+    assert body["required_columns_present"] is True
+    assert body["duplicate_key_count"] == 1
+    assert body["missing_source_urls"] == 1
+    assert body["invalid_timestamps"] == 2
+    assert body["deployment_safe"] is False
