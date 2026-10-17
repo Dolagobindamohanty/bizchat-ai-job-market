@@ -9,6 +9,7 @@ BizChat 2.0 is a production-style web application for understanding India's AI/M
 - City-wise hiring and city/skill heatmap
 - Salary midpoint analysis by city and skill
 - Explainable recommendations based on skills the user already has
+- Salary-aware recommendations that can account for target role, experience, and desired salary
 - Responsive product-style interface with Overview, Skills, Locations, Salaries, and Learn next views
 - FastAPI endpoints for dashboard KPIs, jobs, skills, salaries, locations, and recommendations
 - Local fallback data so the frontend remains viewable while the API is offline
@@ -58,11 +59,19 @@ pytest -q
 
 All analytical endpoints accept optional `city`, `source`, `start_date`, and `end_date` filters. The jobs endpoint also supports `page` and `page_size`.
 
+The recommendations endpoint additionally accepts repeated `current_skills` values plus `target_role`, `years_experience`, and `desired_salary_lpa`. Example:
+
+```text
+/api/recommendations?current_skills=Python&current_skills=SQL&target_role=GenAI%20Engineer&years_experience=2&desired_salary_lpa=20
+```
+
 ## Data and production notes
 
 The included data is a small illustrative sample, not a live feed. Production collection should use official APIs, licensed datasets, or sources that permit automated collection. Add source URLs, collection timestamps, salary parsing, deduplication, and retry/rate-limit handling before using real data.
 
 The dashboard is intentionally separate from collection jobs. Run collectors on a schedule, write cleaned records to PostgreSQL, and let the API read the processed tables. Do not run scrapers during web requests.
+
+The repository includes a safe daily validation workflow at `.github/workflows/daily-refresh.yml`. It validates the data contract but does not scrape portals or make network requests. Real ingestion should be connected only to official APIs, licensed datasets, or lawful user-provided exports.
 
 ## Suggested PostgreSQL evolution
 

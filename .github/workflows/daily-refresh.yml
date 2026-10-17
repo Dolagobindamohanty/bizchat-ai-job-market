@@ -1,0 +1,22 @@
+name: Daily data refresh check
+
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-normalize:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out sample contract
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - name: Validate and normalize CSV (placeholder, no network)
+        run: python -m collector.validate --input data/raw/jobs.csv

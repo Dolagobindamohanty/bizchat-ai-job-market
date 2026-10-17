@@ -9,7 +9,8 @@ CREATE TABLE IF NOT EXISTS jobs (
     experience_min INTEGER,
     remote_type TEXT,
     source TEXT NOT NULL,
-    source_url TEXT,
+    -- Provenance is required for every ingested job record.
+    source_url TEXT NOT NULL,
     description TEXT,
     posted_date DATE,
     collected_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -33,3 +34,7 @@ CREATE TABLE IF NOT EXISTS job_skills (
 CREATE INDEX IF NOT EXISTS jobs_posted_date_idx ON jobs(posted_date);
 CREATE INDEX IF NOT EXISTS jobs_location_idx ON jobs(location);
 CREATE INDEX IF NOT EXISTS jobs_source_idx ON jobs(source);
+-- A provider's stable identifier is the preferred deduplication key.
+CREATE UNIQUE INDEX IF NOT EXISTS jobs_source_job_id_uidx
+    ON jobs(source, source_job_id)
+    WHERE source_job_id IS NOT NULL;

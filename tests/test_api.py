@@ -31,3 +31,22 @@ def test_recommendations_exclude_current_skills():
 
     assert response.status_code == 200
     assert all(item["skill"] not in {"Python", "SQL"} for item in response.json())
+
+
+def test_recommendations_accept_profile_inputs_and_return_score():
+    response = client.get(
+        "/api/recommendations",
+        params={
+            "target_role": "Data Scientist",
+            "years_experience": 3,
+            "desired_salary_lpa": 18,
+            "current_skills": "Python",
+        },
+    )
+
+    assert response.status_code == 200
+    recommendations = response.json()
+    assert recommendations
+    assert all(item["skill"] != "Python" for item in recommendations)
+    assert all(0 <= item["score"] <= 100 for item in recommendations)
+    assert all("median salary" in item["reason"] for item in recommendations)

@@ -86,6 +86,7 @@ class LearningRecommendation(BaseModel):
     demand: int
     share: float
     reason: str
+    score: float = 0.0
 
 
 app = FastAPI(title="BizChat API", version="2.0.0")
@@ -213,8 +214,11 @@ def job_listings(
 @app.get("/api/recommendations", response_model=list[LearningRecommendation])
 @app.get("/api/learning-recommendations", response_model=list[LearningRecommendation], include_in_schema=False)
 def learning_recommendations(
-    current_skills: Annotated[list[str], Query()] = [],
+    current_skills: Annotated[list[str] | None, Query()] = None,
     target_city: Annotated[str, Query()] = "All cities",
+    target_role: Annotated[str | None, Query(description="Desired job title or role")] = None,
+    years_experience: Annotated[float | None, Query(ge=0, description="Years of professional experience")] = None,
+    desired_salary_lpa: Annotated[float | None, Query(ge=0, description="Desired annual salary in LPA")] = None,
     city: FilterCity = None,
     source: FilterSource = None,
     start_date: FilterStart = None,
@@ -222,5 +226,21 @@ def learning_recommendations(
 ) -> list[LearningRecommendation]:
     jobs = filtered_jobs(city, source, start_date, end_date)
     scoped_city = target_city if target_city != "All cities" else "All cities"
-    recs = recommendations(jobs, current_skills, scoped_city)
-    return [LearningRecommendation(skill=str(row.skill), demand=int(row.demand), share=float(row.share), reason=str(row.reason)) for row in recs.itertuples()]
+    recs = recommendations(
+        jobs,
+        current_skills or [],
+        scoped_city,
+        target_role=target_role,
+        years_experience=years_experience,
+        desired_salary_lpa=desired_salary_lpa,
+    )
+    return [
+        LearningRecommendation(
+            skill=str(row.skill),
+            demand=int(row.demand),
+            share=float(row.share),
+            score=float(row.score),
+            reason=str(row.reason),
+        )
+        for row in recs.itertuples()
+    ]
