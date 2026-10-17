@@ -17,6 +17,7 @@ def _tokens(value: str) -> set[str]:
 
 
 def resume_match(resume_text: str, target_role: str, years_experience: float, jobs: pd.DataFrame) -> dict[str, Any]:
+    jobs = jobs.copy()
     resume_skills = extract_skills(resume_text)
     role_terms = _tokens(target_role)
     role_jobs = jobs
@@ -42,6 +43,8 @@ def resume_match(resume_text: str, target_role: str, years_experience: float, jo
 
 
 def trend_forecast(jobs: pd.DataFrame) -> dict[str, Any]:
+    jobs = jobs.copy()
+    jobs = jobs.dropna(subset=["posted_date"])
     if jobs.empty:
         return {"forecast_method": "deterministic baseline (not ML)", "periods": [], "week_over_week": [], "forecast": []}
     latest = jobs["posted_date"].max().date()
@@ -74,6 +77,7 @@ def trend_forecast(jobs: pd.DataFrame) -> dict[str, Any]:
 
 
 def semantic_search(query: str, jobs: pd.DataFrame, limit: int = 20) -> list[dict[str, Any]]:
+    jobs = jobs.copy()
     query_tokens = _tokens(query)
     query_skills = {skill.casefold() for skill in extract_skills(query)}
     results = []
@@ -92,6 +96,7 @@ def semantic_search(query: str, jobs: pd.DataFrame, limit: int = 20) -> list[dic
 
 
 def alert_preview(filters: dict[str, Any], jobs: pd.DataFrame) -> dict[str, Any]:
+    jobs = jobs.copy()
     allowed = {"city", "source", "start_date", "end_date", "role_type", "experience_level", "min_salary_lpa", "max_salary_lpa", "remote_type", "skill"}
     applied = {key: value for key, value in filters.items() if key in allowed and value not in (None, "", [])}
     scoped = jobs
@@ -103,10 +108,13 @@ def alert_preview(filters: dict[str, Any], jobs: pd.DataFrame) -> dict[str, Any]
         elif key in {"min_salary_lpa", "max_salary_lpa"}:
             scoped = scoped[scoped["salary_max_lpa"] >= float(value)] if key == "min_salary_lpa" else scoped[scoped["salary_min_lpa"] <= float(value)]
         elif key in {"start_date", "end_date"}:
-            boundary = pd.Timestamp(value).date()
+            boundary_value = pd.to_datetime(value, errors="coerce")
+            if pd.isna(boundary_value):
+                continue
+            boundary = boundary_value.date()
             scoped = scoped[scoped["posted_date"].dt.date >= boundary] if key == "start_date" else scoped[scoped["posted_date"].dt.date <= boundary]
         else:
             scoped = scoped[scoped[column].astype(str).str.casefold() == str(value).casefold()]
-    sample = [{"job_id": row.job_id, "title": row.title, "company": row.company, "location": row.location} for row in scoped.sort_values("posted_date", ascending=False).head(5).itertuples()]
+    sample = [{"job_id": row.job_id, "title": row.title, "company": row.company, "location": row.location} for row in scoped.sort_values(["posted_date", "job_id"], ascending=[False, True], na_position="last").head(5).itertuples()]
     return {"filters": applied, "matched_jobs": len(scoped), "sample_jobs": sample,
             "delivery": {"status": "preview_only", "message": "Delivery requires an authorized email or Telegram provider."}}

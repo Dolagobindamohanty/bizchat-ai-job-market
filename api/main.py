@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from datetime import date
+import json
+import re
 from functools import lru_cache
 from pathlib import Path
 from typing import Annotated
 
 import pandas as pd
-from fastapi import Depends, FastAPI, Query
+from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -74,7 +76,7 @@ class JobListing(BaseModel):
     remote_type: str
     source: str
     source_url: str
-    posted_date: date
+    posted_date: date | None
     description: str
     skills: list[str]
 
@@ -88,6 +90,7 @@ class JobsResponse(BaseModel):
 
 class AnalyticsMetadata(BaseModel):
     dataset_rows: int
+    filtered_rows: int
     source_count: int
     latest_collected_at: str | None
     oldest_posted_date: date | None
@@ -162,10 +165,11 @@ class SavedDataResponse(BaseModel):
 app = FastAPI(title="BizChat API", version="2.0.0")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[],
+    allow_origin_regex=r"^https://[a-z0-9-]+\.vercel\.app$|^https?://(?:localhost|127\.0\.0\.1)(?::\d+)?$",
     allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 
@@ -231,6 +235,17 @@ def filter_args(city, source, start_date, end_date, role_type, experience_level,
     return filtered_jobs(city, source, start_date, end_date, role_type, experience_level, min_salary_lpa, max_salary_lpa, remote_type, skill)
 
 
+def filtered_jobs_dependency(
+    city: FilterCity = None, source: FilterSource = None,
+    start_date: FilterStart = None, end_date: FilterEnd = None,
+    role_type: FilterRole = None, experience_level: FilterExperience = None,
+    min_salary_lpa: FilterMinSalary = None, max_salary_lpa: FilterMaxSalary = None,
+    remote_type: FilterRemote = None, skill: FilterSkill = None,
+) -> pd.DataFrame:
+    return filtered_jobs(city, source, start_date, end_date, role_type, experience_level,
+                         min_salary_lpa, max_salary_lpa, remote_type, skill)
+
+
 @app.get("/api/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
@@ -252,8 +267,7 @@ def validation() -> ValidationResponse:
 
 
 @app.get("/api/overview", response_model=Overview)
-def overview(city: FilterCity = None, source: FilterSource = None, start_date: FilterStart = None, end_date: FilterEnd = None) -> Overview:
-    jobs = filtered_jobs(city, source, start_date, end_date)
+def overview(jobs: pd.DataFrame = Depends(filtered_jobs_dependency)) -> Overview:
     demand = skill_demand(jobs)
     city_counts = jobs["location"].value_counts()
     median = jobs["salary_mid_lpa"].median() if not jobs.empty else None
@@ -267,8 +281,8 @@ def overview(city: FilterCity = None, source: FilterSource = None, start_date: F
         cities=int(jobs["location"].nunique()),
         companies=int(jobs["company"].nunique()),
         sources=int(jobs["source"].nunique()),
-        posted_from=None if jobs.empty else jobs["posted_date"].min().date(),
-        posted_to=None if jobs.empty else jobs["posted_date"].max().date(),
+        posted_from=None if jobs["posted_date"].dropna().empty else jobs["posted_date"].min().date(),
+        posted_to=None if jobs["posted_date"].dropna().empty else jobs["posted_date"].max().date(),
     )
 
 
@@ -280,13 +294,12 @@ def demand_response(jobs: pd.DataFrame) -> list[SkillDemand]:
 
 @app.get("/api/skills", response_model=list[SkillDemand])
 @app.get("/api/skill-demand", response_model=list[SkillDemand], include_in_schema=False)
-def skills(city: FilterCity = None, source: FilterSource = None, start_date: FilterStart = None, end_date: FilterEnd = None) -> list[SkillDemand]:
-    return demand_response(filtered_jobs(city, source, start_date, end_date))
+def skills(jobs: pd.DataFrame = Depends(filtered_jobs_dependency)) -> list[SkillDemand]:
+    return demand_response(jobs)
 
 
 @app.get("/api/locations", response_model=list[LocationSummary])
-def locations(city: FilterCity = None, source: FilterSource = None, start_date: FilterStart = None, end_date: FilterEnd = None) -> list[LocationSummary]:
-    jobs = filtered_jobs(city, source, start_date, end_date)
+def locations(jobs: pd.DataFrame = Depends(filtered_jobs_dependency)) -> list[LocationSummary]:
     result = []
     for location, group in jobs.groupby("location", sort=False):
         median = group["salary_mid_lpa"].median()
@@ -295,8 +308,7 @@ def locations(city: FilterCity = None, source: FilterSource = None, start_date: 
 
 
 @app.get("/api/salaries", response_model=SalariesResponse)
-def salaries(city: FilterCity = None, source: FilterSource = None, start_date: FilterStart = None, end_date: FilterEnd = None) -> SalariesResponse:
-    jobs = filtered_jobs(city, source, start_date, end_date)
+def salaries(jobs: pd.DataFrame = Depends(filtered_jobs_dependency)) -> SalariesResponse:
     by_location = []
     for location, group in jobs.groupby("location", sort=False):
         median = group["salary_mid_lpa"].median()
@@ -327,53 +339,56 @@ def job_listings(
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> JobsResponse:
-    jobs = filter_args(city, source, start_date, end_date, role_type, experience_level, min_salary_lpa, max_salary_lpa, remote_type, skill).sort_values("posted_date", ascending=False)
+    jobs = filter_args(city, source, start_date, end_date, role_type, experience_level, min_salary_lpa, max_salary_lpa, remote_type, skill).sort_values(
+        ["posted_date", "job_id"], ascending=[False, True], na_position="last"
+    )
     total = len(jobs)
     page_jobs = jobs.iloc[(page - 1) * page_size : page * page_size]
-    items = [JobListing(**{**row, "posted_date": row["posted_date"].date(), "skills": row["skills"]}) for row in page_jobs.to_dict(orient="records")]
+    items = [JobListing(**{**row, "posted_date": row["posted_date"].date() if pd.notna(row["posted_date"]) else None, "skills": row["skills"]}) for row in page_jobs.to_dict(orient="records")]
     return JobsResponse(items=items, total=total, page=page, page_size=page_size)
 
 
+@lru_cache(maxsize=4)
+def _static_metadata(data_path: str) -> dict:
+    path = Path(data_path)
+    report = validation_report(path)
+    collected = pd.to_datetime(pd.read_csv(path, usecols=["collected_at"])["collected_at"], errors="coerce")
+    jobs = load_jobs()
+    return {"dataset_rows": len(jobs), "source_count": int(jobs["source"].nunique()),
+            "latest_collected_at": None if collected.dropna().empty else collected.max().isoformat(),
+            "oldest_posted_date": None if jobs["posted_date"].dropna().empty else jobs["posted_date"].min().date(),
+            "newest_posted_date": None if jobs["posted_date"].dropna().empty else jobs["posted_date"].max().date(),
+            "data_quality": {"deployment_safe": report.deployment_safe, "duplicate_key_count": report.duplicate_key_count,
+                             "missing_source_urls": report.missing_source_urls, "invalid_timestamps": report.invalid_timestamps}}
+
+
 def _metadata(jobs: pd.DataFrame) -> AnalyticsMetadata:
-    report = validation_report(DATA_PATH)
-    collected = pd.to_datetime(pd.read_csv(DATA_PATH, usecols=["collected_at"])["collected_at"], errors="coerce")
-    return AnalyticsMetadata(
-        dataset_rows=len(jobs), source_count=int(jobs["source"].nunique()),
-        latest_collected_at=None if collected.dropna().empty else collected.max().isoformat(),
-        oldest_posted_date=None if jobs.empty else jobs["posted_date"].min().date(),
-        newest_posted_date=None if jobs.empty else jobs["posted_date"].max().date(),
-        data_quality={"deployment_safe": report.deployment_safe, "duplicate_key_count": report.duplicate_key_count,
-                      "missing_source_urls": report.missing_source_urls, "invalid_timestamps": report.invalid_timestamps},
-    )
+    return AnalyticsMetadata(**_static_metadata(str(DATA_PATH)), filtered_rows=len(jobs))
 
 
 @app.get("/api/analytics/top-cities")
 @app.get("/api/analytics/cities", include_in_schema=False)
 @app.get("/api/analytics/top_cities", include_in_schema=False)
-def analytics_top_cities(city: FilterCity = None, source: FilterSource = None, start_date: FilterStart = None, end_date: FilterEnd = None) -> dict:
-    jobs = filtered_jobs(city, source, start_date, end_date)
+def analytics_top_cities(jobs: pd.DataFrame = Depends(filtered_jobs_dependency)) -> dict:
     return {"items": top_cities(jobs).to_dict(orient="records"), "metadata": _metadata(jobs).model_dump()}
 
 
 @app.get("/api/analytics/top-skills")
 @app.get("/api/analytics/top_skills", include_in_schema=False)
-def analytics_top_skills(city: FilterCity = None, source: FilterSource = None, start_date: FilterStart = None, end_date: FilterEnd = None) -> dict:
-    jobs = filtered_jobs(city, source, start_date, end_date)
+def analytics_top_skills(jobs: pd.DataFrame = Depends(filtered_jobs_dependency)) -> dict:
     return {"items": demand_response(jobs), "metadata": _metadata(jobs).model_dump()}
 
 
 @app.get("/api/analytics/roles-over-time")
 @app.get("/api/analytics/roles_over_time", include_in_schema=False)
-def analytics_roles_over_time(frequency: Annotated[str, Query(pattern="^(week|month)$")] = "month", city: FilterCity = None, source: FilterSource = None, start_date: FilterStart = None, end_date: FilterEnd = None) -> dict:
-    jobs = filtered_jobs(city, source, start_date, end_date)
+def analytics_roles_over_time(frequency: Annotated[str, Query(pattern="^(week|month)$")] = "month", jobs: pd.DataFrame = Depends(filtered_jobs_dependency)) -> dict:
     return {"items": roles_over_time(jobs, frequency).to_dict(orient="records"), "metadata": _metadata(jobs).model_dump()}
 
 
 @app.get("/api/analytics/salary-distribution-by-role")
 @app.get("/api/analytics/salary-distribution", include_in_schema=False)
 @app.get("/api/analytics/salary_distribution_by_role", include_in_schema=False)
-def analytics_salary_distribution(city: FilterCity = None, source: FilterSource = None, start_date: FilterStart = None, end_date: FilterEnd = None) -> dict:
-    jobs = filtered_jobs(city, source, start_date, end_date)
+def analytics_salary_distribution(jobs: pd.DataFrame = Depends(filtered_jobs_dependency)) -> dict:
     return {"items": salary_distribution_by_role(jobs).to_dict(orient="records"), "metadata": _metadata(jobs).model_dump()}
 
 
@@ -384,9 +399,13 @@ def data_quality() -> dict:
 
 
 CHAT_INTENTS = {
-    "top cities": "top_cities", "top skills": "top_skills", "skills": "top_skills",
-    "roles over time": "roles_over_time", "salary distribution": "salary_distribution_by_role",
+    "salary distribution by role": "salary_distribution_by_role",
+    "salary distribution": "salary_distribution_by_role",
     "salary by role": "salary_distribution_by_role",
+    "roles over time": "roles_over_time",
+    "top cities": "top_cities",
+    "top skills": "top_skills",
+    "skills": "top_skills",
 }
 
 
@@ -394,7 +413,8 @@ CHAT_INTENTS = {
 @app.post("/api/chat", response_model=ChatResponse, include_in_schema=False)
 def chat_query(request: ChatRequest) -> ChatResponse:
     normalized = " ".join(request.question.casefold().split())
-    intent = next((value for phrase, value in CHAT_INTENTS.items() if phrase in normalized), None)
+    intent = next((value for phrase, value in sorted(CHAT_INTENTS.items(), key=lambda item: -len(item[0]))
+                   if re.search(rf"\b{re.escape(phrase)}\b", normalized)), None)
     if intent is None:
         return ChatResponse(supported=False, message="Unsupported question. Ask about top cities, top skills, roles over time, or salary distribution by role.")
     jobs = load_jobs()
@@ -412,11 +432,14 @@ def chat_query(request: ChatRequest) -> ChatResponse:
 @app.get("/api/job-history", response_model=JobHistoryResponse)
 @app.get("/api/jobs/history", response_model=JobHistoryResponse, include_in_schema=False)
 @app.get("/api/job-runs", response_model=JobHistoryResponse, include_in_schema=False)
-def job_history(limit: Annotated[int, Query(ge=1, le=100)] = 30, repo: DatabaseRepository = Depends(repository)) -> JobHistoryResponse:
+def job_history(limit: Annotated[int, Query(ge=1, le=100)] = 30, user_id: str = Depends(current_user), repo: DatabaseRepository = Depends(repository)) -> JobHistoryResponse:
     return JobHistoryResponse(items=repo.list_job_runs(limit))
 
 
 def save_data(data_type: str, payload: dict, user_id: str, repo: DatabaseRepository) -> SavedDataResponse:
+    payload_size = len(json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8"))
+    if payload_size > 20 * 1024:
+        raise HTTPException(status_code=413, detail="Saved payload exceeds the 20KB limit")
     return SavedDataResponse(**repo.save_user_data(user_id, data_type, payload))
 
 
@@ -466,17 +489,12 @@ def learning_recommendations(
     target_role: Annotated[str | None, Query(description="Desired job title or role")] = None,
     years_experience: Annotated[float | None, Query(ge=0, description="Years of professional experience")] = None,
     desired_salary_lpa: Annotated[float | None, Query(ge=0, description="Desired annual salary in LPA")] = None,
-    city: FilterCity = None,
-    source: FilterSource = None,
-    start_date: FilterStart = None,
-    end_date: FilterEnd = None,
+    jobs: pd.DataFrame = Depends(filtered_jobs_dependency),
 ) -> list[LearningRecommendation]:
-    jobs = filtered_jobs(city, source, start_date, end_date)
-    scoped_city = target_city if target_city != "All cities" else "All cities"
     recs = recommendations(
         jobs,
         current_skills or [],
-        scoped_city,
+        target_city,
         target_role=target_role,
         years_experience=years_experience,
         desired_salary_lpa=desired_salary_lpa,

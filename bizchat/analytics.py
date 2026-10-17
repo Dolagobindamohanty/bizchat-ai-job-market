@@ -51,7 +51,9 @@ def prepare_jobs(df: pd.DataFrame) -> pd.DataFrame:
     result["salary_min_lpa"] = pd.to_numeric(result["salary_min_lpa"], errors="coerce")
     result["salary_max_lpa"] = pd.to_numeric(result["salary_max_lpa"], errors="coerce")
     result["experience_min"] = pd.to_numeric(result["experience_min"], errors="coerce")
-    result["posted_date"] = pd.to_datetime(result["posted_date"])
+    # Source feeds occasionally contain blank or malformed dates.  Keep those
+    # rows (validation reports them) while making analytics operations safe.
+    result["posted_date"] = pd.to_datetime(result["posted_date"], errors="coerce")
     result["salary_mid_lpa"] = (result["salary_min_lpa"] + result["salary_max_lpa"]) / 2
     result["skills"] = (result["title"].fillna("") + " " + result["description"].fillna("")).map(extract_skills)
     result["skill_count"] = result["skills"].str.len()
@@ -118,7 +120,10 @@ def recommendations(
     shape, while newer callers get a score that incorporates salary data.
     """
     current = {item.strip().casefold() for item in current_skills if item and item.strip()}
-    scoped = jobs if target_city == "All cities" else jobs[jobs["location"] == target_city]
+    scoped = jobs.copy()
+    normalized_city = target_city.strip() if isinstance(target_city, str) else target_city
+    if normalized_city and normalized_city.casefold() != "all cities":
+        scoped = scoped[scoped["location"].astype(str).str.casefold() == normalized_city.casefold()].copy()
 
     if target_role:
         role_terms = [term for term in re.findall(r"[a-z0-9]+", target_role.casefold()) if len(term) > 1]
@@ -126,10 +131,10 @@ def recommendations(
             role_text = scoped["title"].fillna("").str.casefold()
             role_matches = role_text.map(lambda title: all(term in title for term in role_terms))
             if role_matches.any():
-                scoped = scoped[role_matches]
+                scoped = scoped[role_matches].copy()
 
     if years_experience is not None:
-        scoped = scoped[scoped["experience_min"] <= years_experience]
+        scoped = scoped[scoped["experience_min"] <= years_experience].copy()
 
     demand = skill_demand(scoped).rename(columns={"jobs": "demand"})
     if demand.empty:

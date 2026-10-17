@@ -91,7 +91,7 @@ class DatabaseRepository:
                 columns = [column.name for column in cursor.description]
                 return [self._json_dates(dict(zip(columns, row))) for row in cursor.fetchall()]
         with self._lock:
-            return sorted(self._runs, key=lambda item: (item["run_date"], item["started_at"]), reverse=True)[:limit]
+            return sorted(self._runs, key=lambda item: (item["run_date"], item["started_at"], item["id"]), reverse=True)[:limit]
 
     def save_user_data(self, user_id: str, data_type: str, payload: dict[str, Any]) -> dict[str, Any]:
         if data_type not in {"profile", "search", "learning_plan"}:
