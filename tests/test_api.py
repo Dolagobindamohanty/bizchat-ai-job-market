@@ -27,6 +27,22 @@ def test_job_listings_filter_and_paginate():
     assert body["total"] == 7
     assert len(body["items"]) == 2
     assert all(item["location"] == "Bengaluru" for item in body["items"])
+    assert body["items"][0]["source_url"].startswith("https://")
+
+
+def test_saved_data_round_trips_in_local_mode(monkeypatch):
+    monkeypatch.delenv("SUPABASE_JWT_SECRET", raising=False)
+    saved = client.post("/api/saved/profile", json={"target_role": "Data Scientist"})
+    assert saved.status_code == 200
+    assert saved.json()["payload"]["target_role"] == "Data Scientist"
+    listed = client.get("/api/saved/profile")
+    assert listed.status_code == 200
+    assert listed.json()[0]["payload"]["target_role"] == "Data Scientist"
+
+
+def test_saved_data_requires_bearer_when_supabase_configured(monkeypatch):
+    monkeypatch.setenv("SUPABASE_JWT_SECRET", "test-secret")
+    assert client.post("/api/saved/searches", json={"city": "Pune"}).status_code == 401
 
 
 def test_recommendations_exclude_current_skills():

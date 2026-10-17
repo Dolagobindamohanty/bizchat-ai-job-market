@@ -2,16 +2,18 @@ from __future__ import annotations
 
 from datetime import date
 from functools import lru_cache
+import os
 from pathlib import Path
 from typing import Annotated
 
 import pandas as pd
-from fastapi import FastAPI, Query
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from bizchat.analytics import prepare_jobs, recommendations, skill_demand
 from collector.validate import validation_report
+from database.repository import DatabaseRepository, get_repository
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -70,6 +72,7 @@ class JobListing(BaseModel):
     experience_min: float | None
     remote_type: str
     source: str
+    source_url: str
     posted_date: date
     description: str
     skills: list[str]
@@ -100,6 +103,19 @@ class ValidationResponse(BaseModel):
     deployment_safe: bool
 
 
+class JobHistoryResponse(BaseModel):
+    items: list[dict]
+
+
+class SavedDataResponse(BaseModel):
+    id: str
+    user_id: str
+    data_type: str
+    payload: dict
+    created_at: str
+    updated_at: str
+
+
 app = FastAPI(title="BizChat API", version="2.0.0")
 app.add_middleware(
     CORSMiddleware,
@@ -114,6 +130,27 @@ app.add_middleware(
 def load_jobs() -> pd.DataFrame:
     """Load and normalize the local source once per process."""
     return prepare_jobs(pd.read_csv(DATA_PATH))
+
+
+def current_user(authorization: Annotated[str | None, Header()] = None) -> str:
+    """Verify Supabase HS256 tokens when configured; otherwise use local mode."""
+    secret = os.getenv("SUPABASE_JWT_SECRET")
+    if not secret:
+        return "local"
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Bearer token required")
+    try:
+        import jwt
+        claims = jwt.decode(authorization.split(" ", 1)[1].strip(), secret, algorithms=["HS256"], audience=os.getenv("SUPABASE_JWT_AUDIENCE", "authenticated"))
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid bearer token") from exc
+    if not claims.get("sub"):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token has no user subject")
+    return str(claims["sub"])
+
+
+def repository() -> DatabaseRepository:
+    return get_repository()
 
 
 def filtered_jobs(
@@ -235,6 +272,55 @@ def job_listings(
     page_jobs = jobs.iloc[(page - 1) * page_size : page * page_size]
     items = [JobListing(**{**row, "posted_date": row["posted_date"].date(), "skills": row["skills"]}) for row in page_jobs.to_dict(orient="records")]
     return JobsResponse(items=items, total=total, page=page, page_size=page_size)
+
+
+@app.get("/api/job-history", response_model=JobHistoryResponse)
+@app.get("/api/jobs/history", response_model=JobHistoryResponse, include_in_schema=False)
+@app.get("/api/job-runs", response_model=JobHistoryResponse, include_in_schema=False)
+def job_history(limit: Annotated[int, Query(ge=1, le=100)] = 30, repo: DatabaseRepository = Depends(repository)) -> JobHistoryResponse:
+    return JobHistoryResponse(items=repo.list_job_runs(limit))
+
+
+def save_data(data_type: str, payload: dict, user_id: str, repo: DatabaseRepository) -> SavedDataResponse:
+    return SavedDataResponse(**repo.save_user_data(user_id, data_type, payload))
+
+
+def list_data(data_type: str, user_id: str, repo: DatabaseRepository) -> list[SavedDataResponse]:
+    return [SavedDataResponse(**item) for item in repo.list_user_data(user_id, data_type)]
+
+
+@app.post("/api/saved/profile", response_model=SavedDataResponse)
+def save_profile(payload: dict, user_id: str = Depends(current_user), repo: DatabaseRepository = Depends(repository)) -> SavedDataResponse:
+    return save_data("profile", payload, user_id, repo)
+
+
+@app.get("/api/saved/profile", response_model=list[SavedDataResponse])
+def saved_profile(user_id: str = Depends(current_user), repo: DatabaseRepository = Depends(repository)) -> list[SavedDataResponse]:
+    return list_data("profile", user_id, repo)
+
+
+@app.post("/api/saved/searches", response_model=SavedDataResponse)
+@app.post("/api/saved/search", response_model=SavedDataResponse, include_in_schema=False)
+def save_search(payload: dict, user_id: str = Depends(current_user), repo: DatabaseRepository = Depends(repository)) -> SavedDataResponse:
+    return save_data("search", payload, user_id, repo)
+
+
+@app.get("/api/saved/searches", response_model=list[SavedDataResponse])
+@app.get("/api/saved/search", response_model=list[SavedDataResponse], include_in_schema=False)
+def saved_searches(user_id: str = Depends(current_user), repo: DatabaseRepository = Depends(repository)) -> list[SavedDataResponse]:
+    return list_data("search", user_id, repo)
+
+
+@app.post("/api/saved/learning-plans", response_model=SavedDataResponse)
+@app.post("/api/saved/learning-plan", response_model=SavedDataResponse, include_in_schema=False)
+def save_learning_plan(payload: dict, user_id: str = Depends(current_user), repo: DatabaseRepository = Depends(repository)) -> SavedDataResponse:
+    return save_data("learning_plan", payload, user_id, repo)
+
+
+@app.get("/api/saved/learning-plans", response_model=list[SavedDataResponse])
+@app.get("/api/saved/learning-plan", response_model=list[SavedDataResponse], include_in_schema=False)
+def saved_learning_plans(user_id: str = Depends(current_user), repo: DatabaseRepository = Depends(repository)) -> list[SavedDataResponse]:
+    return list_data("learning_plan", user_id, repo)
 
 
 @app.get("/api/recommendations", response_model=list[LearningRecommendation])

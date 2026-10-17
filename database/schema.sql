@@ -38,3 +38,26 @@ CREATE INDEX IF NOT EXISTS jobs_source_idx ON jobs(source);
 CREATE UNIQUE INDEX IF NOT EXISTS jobs_source_job_id_uidx
     ON jobs(source, source_job_id)
     WHERE source_job_id IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS job_runs (
+    id UUID PRIMARY KEY,
+    run_date DATE NOT NULL,
+    status TEXT NOT NULL,
+    jobs_seen INTEGER NOT NULL DEFAULT 0,
+    jobs_saved INTEGER NOT NULL DEFAULT 0,
+    source TEXT,
+    error TEXT,
+    started_at TIMESTAMPTZ NOT NULL,
+    finished_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS job_runs_run_date_idx ON job_runs(run_date DESC);
+
+CREATE TABLE IF NOT EXISTS saved_user_data (
+    id UUID PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    data_type TEXT NOT NULL CHECK (data_type IN ('profile', 'search', 'learning_plan')),
+    payload JSONB NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX IF NOT EXISTS saved_user_data_user_type_idx ON saved_user_data(user_id, data_type, updated_at DESC);

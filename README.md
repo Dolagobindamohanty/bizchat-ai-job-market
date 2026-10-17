@@ -75,6 +75,8 @@ The repository includes a safe daily validation workflow at `.github/workflows/d
 
 See [`docs/backend-validation-implementation.md`](docs/backend-validation-implementation.md) for the backend validation contract, deployment readiness checks, implementation map, and acceptance criteria.
 
+See [`docs/production-setup.md`](docs/production-setup.md) for PostgreSQL, Supabase Auth, source links, scheduled collection, recommendation profiles, and Render environment setup.
+
 ## Suggested PostgreSQL evolution
 
 `database/schema.sql` contains a normalized starting schema for `jobs`, `skills`, and `job_skills`. The current MVP uses CSV so it can run without external services.
