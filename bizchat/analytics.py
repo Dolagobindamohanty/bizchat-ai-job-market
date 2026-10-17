@@ -42,11 +42,38 @@ def extract_skills(text: str, skill_aliases: dict[str, Iterable[str]] = SKILL_AL
 
 def prepare_jobs(df: pd.DataFrame) -> pd.DataFrame:
     result = df.copy()
+    for column, default in {
+        "salary_min_lpa": None, "salary_max_lpa": None, "experience_min": None,
+        "remote_type": "Unknown", "location": "Unknown", "source": "Unknown",
+    }.items():
+        if column not in result:
+            result[column] = default
+    result["salary_min_lpa"] = pd.to_numeric(result["salary_min_lpa"], errors="coerce")
+    result["salary_max_lpa"] = pd.to_numeric(result["salary_max_lpa"], errors="coerce")
+    result["experience_min"] = pd.to_numeric(result["experience_min"], errors="coerce")
     result["posted_date"] = pd.to_datetime(result["posted_date"])
     result["salary_mid_lpa"] = (result["salary_min_lpa"] + result["salary_max_lpa"]) / 2
     result["skills"] = (result["title"].fillna("") + " " + result["description"].fillna("")).map(extract_skills)
     result["skill_count"] = result["skills"].str.len()
+    result["role_type"] = result["title"].fillna("").map(role_type)
+    result["experience_level"] = result["experience_min"].map(experience_level)
     return result
+
+
+def role_type(title: str) -> str:
+    text = str(title or "").casefold()
+    for label, terms in (("Data", ("data", "analytics")), ("Machine Learning", ("machine learning", "ml ")),
+                         ("AI/GenAI", ("ai", "genai", "llm")), ("Platform/DevOps", ("platform", "devops", "sre"))):
+        if any(term in text for term in terms):
+            return label
+    return "Software Engineering"
+
+
+def experience_level(years: float | None) -> str:
+    if pd.isna(years):
+        return "Unknown"
+    years = float(years)
+    return "Entry" if years <= 2 else "Mid" if years <= 5 else "Senior"
 
 
 def skill_demand(jobs: pd.DataFrame) -> pd.DataFrame:
@@ -58,6 +85,22 @@ def skill_demand(jobs: pd.DataFrame) -> pd.DataFrame:
 
 def explode_skills(jobs: pd.DataFrame) -> pd.DataFrame:
     return jobs[["job_id", "location", "salary_mid_lpa", "posted_date", "skills"]].explode("skills").rename(columns={"skills": "skill"}).dropna(subset=["skill"])
+
+
+def top_cities(jobs: pd.DataFrame) -> pd.DataFrame:
+    return jobs.groupby("location", dropna=False).size().reset_index(name="jobs").sort_values(["jobs", "location"], ascending=[False, True])
+
+
+def roles_over_time(jobs: pd.DataFrame, frequency: str = "month") -> pd.DataFrame:
+    period = jobs["posted_date"].dt.to_period("W" if frequency == "week" else "M").astype(str)
+    return jobs.assign(period=period).groupby(["period", "role_type"], as_index=False).size().rename(columns={"size": "jobs"}).sort_values(["period", "role_type"])
+
+
+def salary_distribution_by_role(jobs: pd.DataFrame) -> pd.DataFrame:
+    return jobs.dropna(subset=["salary_mid_lpa"]).groupby("role_type")["salary_mid_lpa"].agg(
+        count="count", min_salary_lpa="min", p25_salary_lpa=lambda x: x.quantile(.25),
+        median_salary_lpa="median", p75_salary_lpa=lambda x: x.quantile(.75), max_salary_lpa="max",
+    ).reset_index().sort_values("role_type")
 
 
 def recommendations(

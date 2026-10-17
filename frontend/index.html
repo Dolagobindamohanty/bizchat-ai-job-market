@@ -3,8 +3,12 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="description" content="BizChat AI job market intelligence dashboard" />
-    <title>BizChat 2.0 · AI job market intelligence</title>
+    <meta name="description" content="Clear, practical AI job market intelligence for roles, skills, salaries and cities across India." />
+    <meta name="theme-color" content="#6558f5" />
+    <meta property="og:title" content="BizChat · AI job market intelligence" />
+    <meta property="og:description" content="Explore live and illustrative AI job market signals across India." />
+    <meta property="og:type" content="website" />
+    <title>BizChat · AI job market intelligence</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
@@ -21,12 +25,14 @@
       <main class="content">
         <header>
           <div><p class="eyebrow">AI JOB MARKET / INDIA</p><h1 id="page-title">The market, made clear.</h1><p class="subhead">Signals from <span id="role-count">0</span> roles, updated daily.</p></div>
-          <div class="header-actions"><span class="api-pill"><span class="live-dot"></span><span id="data-status">Sample data</span></span><button class="avatar" id="avatar" aria-label="Open account">AM</button></div>
+          <div class="header-actions"><button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle dark mode">☾</button><span class="api-pill"><span class="live-dot"></span><span id="data-status">Loading…</span></span><button class="avatar" id="avatar" aria-label="Open account">AM</button></div>
         </header>
-        <div class="toolbar"><div class="filters"><label>LOCATION<select id="city-filter"><option>All cities</option></select></label><label>SOURCE<select id="source-filter"><option>All sources</option></select></label></div><span class="date-chip">◷ &nbsp;26 Sep — 15 Oct 2026</span></div>
+        <div id="data-banner" class="data-banner" role="status">Preparing the latest market snapshot…</div>
+        <div id="error-banner" class="error-banner" hidden role="alert"><span id="error-message">We couldn't load live data.</span><button id="retry-load" type="button">Retry</button></div>
+        <div class="toolbar"><div class="filters"><label>LOCATION<select id="city-filter"><option>All cities</option></select></label><label>SOURCE<select id="source-filter"><option>All sources</option></select></label><label>ROLE TYPE<select id="role-filter"><option>All role types</option></select></label><label>EXPERIENCE<select id="experience-filter"><option>All experience</option><option value="junior">0–2 years</option><option value="mid">3–6 years</option><option value="senior">7+ years</option></select></label><label>REMOTE<select id="remote-filter"><option>All remote types</option><option>Remote</option><option>Hybrid</option><option>On-site</option></select></label><label>SKILL<input id="skill-filter" type="search" placeholder="e.g. Python" /></label><label>MIN SALARY<input id="salary-min" type="number" min="0" placeholder="₹ min LPA" /></label><label>MAX SALARY<input id="salary-max" type="number" min="0" placeholder="₹ max LPA" /></label><button id="clear-filters" class="secondary" type="button">Clear filters</button></div><span class="date-chip">◷ &nbsp;Updated daily</span></div>
         <section class="kpis" id="kpis" aria-label="Market metrics"></section>
         <div id="view-root"></div>
-        <footer><span>BizChat 2.0</span><span>Built for clearer career decisions · Data is illustrative</span></footer>
+        <section class="about panel"><h2>About this data</h2><p>We collect public job-market signals from the connected API and normalize titles, locations, skills and salary ranges for comparison. When the API is unavailable, this dashboard uses clearly labelled illustrative sample data so you can still explore the interface. Salary figures are estimated LPA midpoints, not guarantees.</p></section><footer><span>BizChat 2.0</span><span>Built for clearer career decisions · Verify details with the source</span></footer>
       </main>
     </div>
     <div id="account-modal" class="account-modal" hidden role="dialog" aria-modal="true" aria-labelledby="account-title"><div class="account-card"><button class="modal-close" id="account-close" aria-label="Close account dialog">×</button><h2 id="account-title">Your account</h2><p id="auth-status" class="form-status" role="status"></p><form id="auth-form"><label for="auth-email">Email address</label><input id="auth-email" type="email" autocomplete="email" required placeholder="you@example.com"><button class="primary" type="submit" id="auth-submit">Send magic link</button></form><button class="secondary" id="sign-out" hidden>Sign out</button><div id="saved-workspace" class="saved-workspace"></div></div></div>

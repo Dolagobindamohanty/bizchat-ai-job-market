@@ -10,7 +10,7 @@ from fastapi import Depends, FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from bizchat.analytics import prepare_jobs, recommendations, skill_demand
+from bizchat.analytics import prepare_jobs, recommendations, skill_demand, top_cities, roles_over_time, salary_distribution_by_role
 from collector.validate import validation_report
 from database.repository import DatabaseRepository, get_repository
 from api.auth import current_user
@@ -85,6 +85,26 @@ class JobsResponse(BaseModel):
     page_size: int
 
 
+class AnalyticsMetadata(BaseModel):
+    dataset_rows: int
+    source_count: int
+    latest_collected_at: str | None
+    oldest_posted_date: date | None
+    newest_posted_date: date | None
+    data_quality: dict[str, int | bool]
+
+
+class ChatRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=500)
+
+
+class ChatResponse(BaseModel):
+    supported: bool
+    intent: str | None = None
+    result: dict | list | None = None
+    message: str
+
+
 class LearningRecommendation(BaseModel):
     skill: str
     demand: int
@@ -141,6 +161,12 @@ def filtered_jobs(
     source: str | None,
     start_date: date | None,
     end_date: date | None,
+    role_type: str | None = None,
+    experience_level: str | None = None,
+    min_salary_lpa: float | None = None,
+    max_salary_lpa: float | None = None,
+    remote_type: str | None = None,
+    skill: str | None = None,
 ) -> pd.DataFrame:
     jobs = load_jobs()
     if city:
@@ -151,6 +177,18 @@ def filtered_jobs(
         jobs = jobs[jobs["posted_date"].dt.date >= start_date]
     if end_date:
         jobs = jobs[jobs["posted_date"].dt.date <= end_date]
+    if role_type:
+        jobs = jobs[jobs["role_type"].str.casefold() == role_type.casefold()]
+    if experience_level:
+        jobs = jobs[jobs["experience_level"].str.casefold() == experience_level.casefold()]
+    if min_salary_lpa is not None:
+        jobs = jobs[jobs["salary_max_lpa"] >= min_salary_lpa]
+    if max_salary_lpa is not None:
+        jobs = jobs[jobs["salary_min_lpa"] <= max_salary_lpa]
+    if remote_type:
+        jobs = jobs[jobs["remote_type"].str.casefold() == remote_type.casefold()]
+    if skill:
+        jobs = jobs[jobs["skills"].map(lambda values: any(skill.casefold() == item.casefold() for item in values))]
     return jobs.copy()
 
 
@@ -158,6 +196,16 @@ FilterCity = Annotated[str | None, Query(description="Exact city filter")]
 FilterSource = Annotated[str | None, Query(description="Exact source filter")]
 FilterStart = Annotated[date | None, Query(description="Earliest posted date")]
 FilterEnd = Annotated[date | None, Query(description="Latest posted date")]
+FilterRole = Annotated[str | None, Query(description="Derived role category")]
+FilterExperience = Annotated[str | None, Query(description="Entry, Mid, Senior, or Unknown")]
+FilterMinSalary = Annotated[float | None, Query(ge=0)]
+FilterMaxSalary = Annotated[float | None, Query(ge=0)]
+FilterRemote = Annotated[str | None, Query(description="Remote, Hybrid, On-site, etc.")]
+FilterSkill = Annotated[str | None, Query(description="Canonical skill")]
+
+
+def filter_args(city, source, start_date, end_date, role_type, experience_level, min_salary_lpa, max_salary_lpa, remote_type, skill):
+    return filtered_jobs(city, source, start_date, end_date, role_type, experience_level, min_salary_lpa, max_salary_lpa, remote_type, skill)
 
 
 @app.get("/api/health")
@@ -247,14 +295,95 @@ def job_listings(
     source: FilterSource = None,
     start_date: FilterStart = None,
     end_date: FilterEnd = None,
+    role_type: FilterRole = None,
+    experience_level: FilterExperience = None,
+    min_salary_lpa: FilterMinSalary = None,
+    max_salary_lpa: FilterMaxSalary = None,
+    remote_type: FilterRemote = None,
+    skill: FilterSkill = None,
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> JobsResponse:
-    jobs = filtered_jobs(city, source, start_date, end_date).sort_values("posted_date", ascending=False)
+    jobs = filter_args(city, source, start_date, end_date, role_type, experience_level, min_salary_lpa, max_salary_lpa, remote_type, skill).sort_values("posted_date", ascending=False)
     total = len(jobs)
     page_jobs = jobs.iloc[(page - 1) * page_size : page * page_size]
     items = [JobListing(**{**row, "posted_date": row["posted_date"].date(), "skills": row["skills"]}) for row in page_jobs.to_dict(orient="records")]
     return JobsResponse(items=items, total=total, page=page, page_size=page_size)
+
+
+def _metadata(jobs: pd.DataFrame) -> AnalyticsMetadata:
+    report = validation_report(DATA_PATH)
+    collected = pd.to_datetime(pd.read_csv(DATA_PATH, usecols=["collected_at"])["collected_at"], errors="coerce")
+    return AnalyticsMetadata(
+        dataset_rows=len(jobs), source_count=int(jobs["source"].nunique()),
+        latest_collected_at=None if collected.dropna().empty else collected.max().isoformat(),
+        oldest_posted_date=None if jobs.empty else jobs["posted_date"].min().date(),
+        newest_posted_date=None if jobs.empty else jobs["posted_date"].max().date(),
+        data_quality={"deployment_safe": report.deployment_safe, "duplicate_key_count": report.duplicate_key_count,
+                      "missing_source_urls": report.missing_source_urls, "invalid_timestamps": report.invalid_timestamps},
+    )
+
+
+@app.get("/api/analytics/top-cities")
+@app.get("/api/analytics/cities", include_in_schema=False)
+@app.get("/api/analytics/top_cities", include_in_schema=False)
+def analytics_top_cities(city: FilterCity = None, source: FilterSource = None, start_date: FilterStart = None, end_date: FilterEnd = None) -> dict:
+    jobs = filtered_jobs(city, source, start_date, end_date)
+    return {"items": top_cities(jobs).to_dict(orient="records"), "metadata": _metadata(jobs).model_dump()}
+
+
+@app.get("/api/analytics/top-skills")
+@app.get("/api/analytics/top_skills", include_in_schema=False)
+def analytics_top_skills(city: FilterCity = None, source: FilterSource = None, start_date: FilterStart = None, end_date: FilterEnd = None) -> dict:
+    jobs = filtered_jobs(city, source, start_date, end_date)
+    return {"items": demand_response(jobs), "metadata": _metadata(jobs).model_dump()}
+
+
+@app.get("/api/analytics/roles-over-time")
+@app.get("/api/analytics/roles_over_time", include_in_schema=False)
+def analytics_roles_over_time(frequency: Annotated[str, Query(pattern="^(week|month)$")] = "month", city: FilterCity = None, source: FilterSource = None, start_date: FilterStart = None, end_date: FilterEnd = None) -> dict:
+    jobs = filtered_jobs(city, source, start_date, end_date)
+    return {"items": roles_over_time(jobs, frequency).to_dict(orient="records"), "metadata": _metadata(jobs).model_dump()}
+
+
+@app.get("/api/analytics/salary-distribution-by-role")
+@app.get("/api/analytics/salary-distribution", include_in_schema=False)
+@app.get("/api/analytics/salary_distribution_by_role", include_in_schema=False)
+def analytics_salary_distribution(city: FilterCity = None, source: FilterSource = None, start_date: FilterStart = None, end_date: FilterEnd = None) -> dict:
+    jobs = filtered_jobs(city, source, start_date, end_date)
+    return {"items": salary_distribution_by_role(jobs).to_dict(orient="records"), "metadata": _metadata(jobs).model_dump()}
+
+
+@app.get("/api/data-quality")
+def data_quality() -> dict:
+    jobs = load_jobs()
+    return {"metadata": _metadata(jobs).model_dump()}
+
+
+CHAT_INTENTS = {
+    "top cities": "top_cities", "top skills": "top_skills", "skills": "top_skills",
+    "roles over time": "roles_over_time", "salary distribution": "salary_distribution_by_role",
+    "salary by role": "salary_distribution_by_role",
+}
+
+
+@app.post("/api/chat/query", response_model=ChatResponse)
+@app.post("/api/chat", response_model=ChatResponse, include_in_schema=False)
+def chat_query(request: ChatRequest) -> ChatResponse:
+    normalized = " ".join(request.question.casefold().split())
+    intent = next((value for phrase, value in CHAT_INTENTS.items() if phrase in normalized), None)
+    if intent is None:
+        return ChatResponse(supported=False, message="Unsupported question. Ask about top cities, top skills, roles over time, or salary distribution by role.")
+    jobs = load_jobs()
+    if intent == "top_cities":
+        result = top_cities(jobs).to_dict(orient="records")
+    elif intent == "top_skills":
+        result = demand_response(jobs)
+    elif intent == "roles_over_time":
+        result = roles_over_time(jobs).to_dict(orient="records")
+    else:
+        result = salary_distribution_by_role(jobs).to_dict(orient="records")
+    return ChatResponse(supported=True, intent=intent, result=result, message="Query answered from the local analytics dataset.")
 
 
 @app.get("/api/job-history", response_model=JobHistoryResponse)

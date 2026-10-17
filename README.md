@@ -2,6 +2,10 @@
 
 BizChat 2.0 is a production-style web application for understanding India's AI/ML/GenAI hiring market. It combines a polished dependency-free static frontend with a FastAPI analytics backend, while preserving the transparent CSV dataset, normalized skill extraction, and explainable learning recommendations from the MVP.
 
+**Problem:** AI job seekers need a practical way to compare demand, cities, salary signals, skills, and next learning steps without manually reading hundreds of postings.
+
+**Live demo:** [bizchat-ai-job-market.vercel.app](https://bizchat-ai-job-market.vercel.app/) · **API:** [Render health check](https://bizchat-ai-job-market.onrender.com/api/health)
+
 ## Features
 
 - KPI cards for tracked jobs, median salary, top skill, and leading city
@@ -13,6 +17,11 @@ BizChat 2.0 is a production-style web application for understanding India's AI/M
 - Responsive product-style interface with Overview, Skills, Locations, Salaries, and Learn next views
 - FastAPI endpoints for dashboard KPIs, jobs, skills, salaries, locations, and recommendations
 - Local fallback data so the frontend remains viewable while the API is offline
+- Loading skeletons, retryable errors, visible live/sample data status, dark mode, and mobile layout
+- Searchable/sortable job listings with original source links
+- Filters for role type, experience, salary, remote mode, city, source, and skills
+- Core takeaways for cities, skills, roles over time, and salary by role
+- Supabase magic-link authentication with saved profiles, searches, and learning plans
 
 ## Run the BizChat 2.0 web app locally
 
@@ -59,6 +68,19 @@ pytest -q
 
 All analytical endpoints accept optional `city`, `source`, `start_date`, and `end_date` filters. The jobs endpoint also supports `page` and `page_size`.
 
+Analytics endpoints include:
+
+```text
+GET /api/analytics/top-cities
+GET /api/analytics/top-skills
+GET /api/analytics/roles-over-time
+GET /api/analytics/salary-distribution-by-role
+GET /api/data-quality
+POST /api/chat/query
+```
+
+The chat endpoint is intentionally read-only and allowlisted: it maps supported natural-language questions to known analytics intents and never executes arbitrary SQL.
+
 The recommendations endpoint additionally accepts repeated `current_skills` values plus `target_role`, `years_experience`, and `desired_salary_lpa`. Example:
 
 ```text
@@ -88,3 +110,20 @@ Deploy the static `frontend/` directory to Vercel and the API to Render. No Node
 For Render, create a Web Service from the same repository. The included `render.yaml` uses `requirements-api.txt` and starts FastAPI with Uvicorn. For daily ingestion, use a separate scheduled worker or an authorized workflow rather than the web process.
 
 The previous Streamlit MVP remains in `dashboard/app.py` for reference, but BizChat 2.0 uses `frontend/` and `api/`.
+
+## Tech stack
+
+- **Frontend:** dependency-free HTML, CSS, and JavaScript hosted on Vercel
+- **Backend:** FastAPI, Pandas, and Python hosted on Render
+- **Storage:** CSV sample mode with PostgreSQL/Supabase schema and RLS for production persistence
+- **NLP:** normalized skill aliases and phrase matching
+- **Auth:** Supabase Auth with PKCE and email magic links
+- **Quality:** pytest, GitHub Actions validation, deployment readiness endpoint
+
+## Screenshot
+
+The live dashboard is the canonical current screenshot and is available at the live demo link above. It includes the Overview, Skills, Locations, Salaries, and Learn next views.
+
+## Roadmap
+
+The next high-value production step is an authorized data pipeline: official APIs or licensed exports → normalization → deduplication → PostgreSQL → scheduled refresh. After that, the allowlisted chat layer can be connected to read-only, schema-aware SQL with query validation. Restricted scraping should not be added without permission from each source.
