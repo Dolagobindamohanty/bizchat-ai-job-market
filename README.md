@@ -73,6 +73,8 @@ The dashboard is intentionally separate from collection jobs. Run collectors on 
 
 The repository includes a safe daily validation workflow at `.github/workflows/daily-refresh.yml`. It validates the data contract but does not scrape portals or make network requests. Real ingestion should be connected only to official APIs, licensed datasets, or lawful user-provided exports.
 
+See [`docs/backend-validation-implementation.md`](docs/backend-validation-implementation.md) for the backend validation contract, deployment readiness checks, implementation map, and acceptance criteria.
+
 ## Suggested PostgreSQL evolution
 
 `database/schema.sql` contains a normalized starting schema for `jobs`, `skills`, and `job_skills`. The current MVP uses CSV so it can run without external services.
