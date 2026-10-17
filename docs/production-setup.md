@@ -26,6 +26,14 @@ Create a Supabase project, enable Email OTP or Email/Password, and allow this re
 https://bizchat-ai-job-market.vercel.app/
 ```
 
+The current Supabase project URL is:
+
+```text
+https://onbovypondmukhzheyhx.supabase.co
+```
+
+Run `database/schema.sql` followed by `database/supabase-rls.sql` in the Supabase SQL Editor before enabling saved workspace data. The RLS script is intentionally fail-closed for the job tables and allows authenticated users to access only their own saved records.
+
 Configure the static frontend before `app.js` loads:
 
 ```html
@@ -35,7 +43,7 @@ Configure the static frontend before `app.js` loads:
 </script>
 ```
 
-`frontend/index.html` loads the Supabase browser client from its public CDN. Never put a Supabase service-role key in the frontend. The avatar becomes a magic-link sign-in/sign-out control, and authenticated users can save searches and learning plans.
+`frontend/config.js` loads the project URL and a blank public key placeholder. Add the Supabase publishable/anon key there before deployment, or provide it through the static hosting configuration. `frontend/index.html` lazy-loads the pinned Supabase browser client from its public CDN. Never put a Supabase service-role key in the frontend. The avatar becomes a magic-link sign-in/sign-out control, and authenticated users can save searches and learning plans directly through Supabase PostgREST with RLS.
 
 ## Job source links
 
