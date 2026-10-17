@@ -10,10 +10,10 @@ From the repository root:
 python -m http.server 3000 --directory frontend
 ```
 
-Open <http://localhost:3000>. The dashboard tries `http://localhost:8000/api/jobs` by default. Configure another API before loading `app.js` with `window.BIZCHAT_API_URL`, for example:
+Open <http://localhost:3000>. The dashboard uses the deployed Render API by default. For local development, configure the API before loading `app.js` with `window.BIZCHAT_API_URL`, for example:
 
 ```html
-<script>window.BIZCHAT_API_URL = 'https://api.example.com/api';</script>
+<script>window.BIZCHAT_API_URL = 'http://localhost:8000/api';</script>
 <script src="app.js"></script>
 ```
 

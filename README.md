@@ -36,7 +36,7 @@ Open a second terminal and run from the repository root:
 python -m http.server 3000 --directory frontend
 ```
 
-Open `http://localhost:3000`. To point the static app at another API, set `window.BIZCHAT_API_URL` before loading `frontend/app.js`; it defaults to `http://localhost:8000/api`.
+Open `http://localhost:3000`. The static app points to the deployed Render API by default. For local development, set `window.BIZCHAT_API_URL` to `http://localhost:8000/api` before loading `frontend/app.js`.
 
 The frontend reads `data/raw/jobs.csv` through the API. If the API is unavailable, it renders the bundled sample fallback so the interface can still be explored.
 
@@ -70,7 +70,7 @@ The dashboard is intentionally separate from collection jobs. Run collectors on 
 
 ## Deploy
 
-Deploy the static `frontend/` directory to Vercel and the API to Render. No Node.js, npm, or frontend build is required for this version. In Vercel, import the repository, choose **Other** as the framework, leave the build command empty, and set the output directory to `frontend`. Then configure the API URL in `frontend/index.html` or in the `BIZCHAT_API_URL` setting described in `frontend/README.md`.
+Deploy the static `frontend/` directory to Vercel and the API to Render. No Node.js, npm, or frontend build is required for this version. In Vercel, import the repository, choose **Other** as the framework, leave the build command empty, and set the output directory to `frontend`. The frontend is configured to use `https://bizchat-ai-job-market.onrender.com/api` by default.
 
 For Render, create a Web Service from the same repository. The included `render.yaml` uses `requirements-api.txt` and starts FastAPI with Uvicorn. For daily ingestion, use a separate scheduled worker or an authorized workflow rather than the web process.
 
