@@ -65,6 +65,10 @@ pytest -q
 - `GET /api/salaries`
 - `GET /api/jobs`
 - `GET /api/recommendations`
+- `POST /api/match-resume`
+- `GET /api/trends/forecast`
+- `GET|POST /api/search/semantic`
+- `POST /api/alerts/preview`
 
 All analytical endpoints accept optional `city`, `source`, `start_date`, and `end_date` filters. The jobs endpoint also supports `page` and `page_size`.
 
@@ -86,6 +90,8 @@ The recommendations endpoint additionally accepts repeated `current_skills` valu
 ```text
 /api/recommendations?current_skills=Python&current_skills=SQL&target_role=GenAI%20Engineer&years_experience=2&desired_salary_lpa=20
 ```
+
+The advanced backend slices are documented in [`docs/advanced-backend-features.md`](docs/advanced-backend-features.md). They are deterministic and local in CSV mode. Semantic search leaves a documented pgvector integration boundary but does not use embeddings or network/LLM services. Alert previews do not send messages; delivery requires an authorized email or Telegram provider.
 
 ## Data and production notes
 

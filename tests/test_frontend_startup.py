@@ -73,11 +73,12 @@ def test_public_page_supplies_startup_dom_before_script():
     assert required <= scripts[0]
     assert re.search(r"let jobs\s*=\s*SAMPLE,\s*view\s*=\s*'Overview'", source)
     assert re.search(
-        r"async function load\(\)\s*\{\s*setup\(\);\s*render\(\);\s*try\s*\{"
+        r"async function load\(\)\s*\{\s*const requestId\s*=\s*\+\+loadRequestId;"
+        r"\s*setup\(\);\s*render\(\);\s*try\s*\{"
         r"\s*const response\s*=\s*await fetchAPI\('/jobs\?page_size=100'\)",
         source,
     )
-    assert source.rstrip().endswith("load();")
+    assert "bindAccount();load();" in source
     assert "${jobTable(list.slice(0,6))}" in source
 
 

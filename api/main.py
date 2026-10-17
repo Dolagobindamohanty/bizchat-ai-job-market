@@ -14,6 +14,7 @@ from bizchat.analytics import prepare_jobs, recommendations, skill_demand, top_c
 from collector.validate import validation_report
 from database.repository import DatabaseRepository, get_repository
 from api.auth import current_user
+from bizchat.advanced import alert_preview, resume_match, semantic_search, trend_forecast
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -111,6 +112,28 @@ class LearningRecommendation(BaseModel):
     share: float
     reason: str
     score: float = 0.0
+
+
+class ResumeMatchRequest(BaseModel):
+    resume_text: str = Field(min_length=1, max_length=50_000)
+    target_role: str = Field(min_length=1, max_length=200)
+    years_experience: float = Field(ge=0, le=100)
+
+
+class SemanticSearchRequest(BaseModel):
+    query: str = Field(min_length=1, max_length=500)
+    limit: int = Field(default=20, ge=1, le=100)
+
+
+class AlertPreviewRequest(BaseModel):
+    filters: dict = Field(default_factory=dict)
+    model_config = {"extra": "allow"}
+
+
+class SemanticSearchResponse(BaseModel):
+    query: str
+    integration: str
+    items: list[dict]
 
 
 class ValidationResponse(BaseModel):
@@ -468,3 +491,31 @@ def learning_recommendations(
         )
         for row in recs.itertuples()
     ]
+
+
+@app.post("/api/match-resume")
+def match_resume(request: ResumeMatchRequest) -> dict:
+    """Compare resume skills with local target-role demand; no model or network calls."""
+    return resume_match(request.resume_text, request.target_role, request.years_experience, load_jobs())
+
+
+@app.get("/api/trends/forecast")
+def trends_forecast() -> dict:
+    """Return week-over-week demand and a deterministic next-period baseline."""
+    return trend_forecast(load_jobs())
+
+
+@app.get("/api/search/semantic", response_model=SemanticSearchResponse)
+def semantic_search_get(q: Annotated[str, Query(min_length=1, max_length=500)], limit: Annotated[int, Query(ge=1, le=100)] = 20) -> SemanticSearchResponse:
+    return SemanticSearchResponse(query=q, integration="deterministic local token/skill relevance; pgvector integration boundary documented, not enabled", items=semantic_search(q, load_jobs(), limit))
+
+
+@app.post("/api/search/semantic", response_model=SemanticSearchResponse)
+def semantic_search_post(request: SemanticSearchRequest) -> SemanticSearchResponse:
+    return SemanticSearchResponse(query=request.query, integration="deterministic local token/skill relevance; pgvector integration boundary documented, not enabled", items=semantic_search(request.query, load_jobs(), request.limit))
+
+
+@app.post("/api/alerts/preview")
+def alerts_preview(request: AlertPreviewRequest) -> dict:
+    filters = request.filters or {key: value for key, value in request.model_extra.items() if key != "filters"}
+    return alert_preview(filters, load_jobs())
