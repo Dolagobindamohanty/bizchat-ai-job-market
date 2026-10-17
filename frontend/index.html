@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="BizChat AI job market intelligence dashboard" />
+    <title>BizChat 2.0 · AI job market intelligence</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="brand"><span>✦</span><strong>bizchat</strong><small>2.0</small></div>
+        <p class="eyebrow">WORKSPACE</p>
+        <nav id="navigation" aria-label="Dashboard views"></nav>
+        <div class="side-bottom"><span class="status-dot"></span><div><b>Data refreshed</b><span id="refresh-status">Loading market data…</span></div></div>
+      </aside>
+      <main class="content">
+        <header>
+          <div><p class="eyebrow">AI JOB MARKET / INDIA</p><h1 id="page-title">The market, made clear.</h1><p class="subhead">Signals from <span id="role-count">0</span> roles, updated daily.</p></div>
+          <div class="header-actions"><span class="api-pill"><span class="live-dot"></span><span id="data-status">Sample data</span></span><button class="avatar" aria-label="Account">AM</button></div>
+        </header>
+        <div class="toolbar"><div class="filters"><label>LOCATION<select id="city-filter"><option>All cities</option></select></label><label>SOURCE<select id="source-filter"><option>All sources</option></select></label></div><span class="date-chip">◷ &nbsp;26 Sep — 15 Oct 2026</span></div>
+        <section class="kpis" id="kpis" aria-label="Market metrics"></section>
+        <div id="view-root"></div>
+        <footer><span>BizChat 2.0</span><span>Built for clearer career decisions · Data is illustrative</span></footer>
+      </main>
+    </div>
+    <script src="app.js"></script>
+  </body>
+</html>
