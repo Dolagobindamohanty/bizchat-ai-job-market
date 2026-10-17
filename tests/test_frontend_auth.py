@@ -7,9 +7,11 @@ HTML = (ROOT / "frontend/index.html").read_text(encoding="utf-8")
 CONFIG = (ROOT / "frontend/config.js").read_text(encoding="utf-8")
 
 
-def test_config_loads_before_app_and_has_no_secret():
+def test_config_loads_before_app_and_uses_public_key_only():
     assert HTML.index('src="config.js"') < HTML.index('src="app.js"')
-    assert "supabaseAnonKey: ''" in CONFIG
+    assert "supabaseUrl: 'https://onbovypondmukhzheyhx.supabase.co'" in CONFIG
+    assert "authRedirectUrl: 'https://bizchat-ai-job-market.vercel.app/'" in CONFIG
+    assert "service-role" not in CONFIG.lower()
 
 
 def test_auth_is_lazy_pkce_and_dashboard_is_independent():
