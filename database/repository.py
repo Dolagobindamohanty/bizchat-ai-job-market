@@ -100,10 +100,11 @@ class DatabaseRepository:
         record = {"id": str(uuid.uuid4()), "user_id": user_id, "data_type": data_type,
                   "payload": payload, "created_at": now, "updated_at": now}
         if self.postgres_enabled:
-            with self._connection_factory() as connection, connection.cursor() as cursor:
-                cursor.execute("INSERT INTO saved_user_data (id, user_id, data_type, payload, created_at, updated_at) VALUES (%s, %s, %s, %s::jsonb, %s, %s)",
-                               (record["id"], user_id, data_type, json.dumps(payload), now, now))
-            connection.commit()
+            with self._connection_factory() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute("INSERT INTO saved_user_data (id, user_id, data_type, payload, created_at, updated_at) VALUES (%s, %s, %s, %s::jsonb, %s, %s)",
+                                   (record["id"], user_id, data_type, json.dumps(payload), now, now))
+                connection.commit()
         else:
             with self._lock:
                 self._saved.append(record)

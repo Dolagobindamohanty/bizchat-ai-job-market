@@ -2,18 +2,18 @@ from __future__ import annotations
 
 from datetime import date
 from functools import lru_cache
-import os
 from pathlib import Path
 from typing import Annotated
 
 import pandas as pd
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, status
+from fastapi import Depends, FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from bizchat.analytics import prepare_jobs, recommendations, skill_demand
 from collector.validate import validation_report
 from database.repository import DatabaseRepository, get_repository
+from api.auth import current_user
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -130,23 +130,6 @@ app.add_middleware(
 def load_jobs() -> pd.DataFrame:
     """Load and normalize the local source once per process."""
     return prepare_jobs(pd.read_csv(DATA_PATH))
-
-
-def current_user(authorization: Annotated[str | None, Header()] = None) -> str:
-    """Verify Supabase HS256 tokens when configured; otherwise use local mode."""
-    secret = os.getenv("SUPABASE_JWT_SECRET")
-    if not secret:
-        return "local"
-    if not authorization or not authorization.lower().startswith("bearer "):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Bearer token required")
-    try:
-        import jwt
-        claims = jwt.decode(authorization.split(" ", 1)[1].strip(), secret, algorithms=["HS256"], audience=os.getenv("SUPABASE_JWT_AUDIENCE", "authenticated"))
-    except Exception as exc:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid bearer token") from exc
-    if not claims.get("sub"):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token has no user subject")
-    return str(claims["sub"])
 
 
 def repository() -> DatabaseRepository:

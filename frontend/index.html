@@ -21,7 +21,7 @@
       <main class="content">
         <header>
           <div><p class="eyebrow">AI JOB MARKET / INDIA</p><h1 id="page-title">The market, made clear.</h1><p class="subhead">Signals from <span id="role-count">0</span> roles, updated daily.</p></div>
-          <div class="header-actions"><span class="api-pill"><span class="live-dot"></span><span id="data-status">Sample data</span></span><button class="avatar" id="avatar" aria-label="Account">AM</button></div>
+          <div class="header-actions"><span class="api-pill"><span class="live-dot"></span><span id="data-status">Sample data</span></span><button class="avatar" id="avatar" aria-label="Open account">AM</button></div>
         </header>
         <div class="toolbar"><div class="filters"><label>LOCATION<select id="city-filter"><option>All cities</option></select></label><label>SOURCE<select id="source-filter"><option>All sources</option></select></label></div><span class="date-chip">◷ &nbsp;26 Sep — 15 Oct 2026</span></div>
         <section class="kpis" id="kpis" aria-label="Market metrics"></section>
@@ -29,6 +29,8 @@
         <footer><span>BizChat 2.0</span><span>Built for clearer career decisions · Data is illustrative</span></footer>
       </main>
     </div>
+    <div id="account-modal" class="account-modal" hidden role="dialog" aria-modal="true" aria-labelledby="account-title"><div class="account-card"><button class="modal-close" id="account-close" aria-label="Close account dialog">×</button><h2 id="account-title">Your account</h2><p id="auth-status" class="form-status" role="status"></p><form id="auth-form"><label for="auth-email">Email address</label><input id="auth-email" type="email" autocomplete="email" required placeholder="you@example.com"><button class="primary" type="submit" id="auth-submit">Send magic link</button></form><button class="secondary" id="sign-out" hidden>Sign out</button><div id="saved-workspace" class="saved-workspace"></div></div></div>
+    <script src="config.js"></script>
     <script src="app.js"></script>
   </body>
 </html>
