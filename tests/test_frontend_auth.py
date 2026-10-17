@@ -11,7 +11,7 @@ def test_config_loads_before_app_and_uses_public_key_only():
     assert HTML.index('src="config.js"') < HTML.index('src="app.js"')
     assert "supabaseUrl: 'https://onbovypondmukhzheyhx.supabase.co'" in CONFIG
     assert "authRedirectUrl: 'https://bizchat-ai-job-market.vercel.app/'" in CONFIG
-    assert "service-role" not in CONFIG.lower()
+    assert "service_role" not in CONFIG.lower()
 
 
 def test_auth_is_lazy_pkce_and_dashboard_is_independent():
