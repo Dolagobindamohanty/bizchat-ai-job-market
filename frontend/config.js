@@ -1,4 +1,4 @@
-/* Public runtime configuration. Keep the publishable key empty until Supabase provides it. */
+/* Public runtime configuration. The publishable/anon key is safe for browser use; never put a service-role key here. */
 window.BIZCHAT_CONFIG = window.BIZCHAT_CONFIG || {
   apiUrl: 'https://bizchat-ai-job-market.onrender.com/api',
   supabaseUrl: 'https://onbovypondmukhzheyhx.supabase.co',
