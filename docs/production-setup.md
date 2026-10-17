@@ -32,6 +32,14 @@ The current Supabase project URL is:
 https://onbovypondmukhzheyhx.supabase.co
 ```
 
+In Supabase **Authentication → URL Configuration**, add this exact redirect URL:
+
+```text
+https://bizchat-ai-job-market.vercel.app/
+```
+
+Magic links intentionally return to the deployed Vercel app instead of `localhost`, so they continue to work after the local Python server is stopped. Use the newest email link; old or already-used links expire.
+
 Run `database/schema.sql` followed by `database/supabase-rls.sql` in the Supabase SQL Editor before enabling saved workspace data. The RLS script is intentionally fail-closed for the job tables and allows authenticated users to access only their own saved records.
 
 Configure the static frontend before `app.js` loads:
