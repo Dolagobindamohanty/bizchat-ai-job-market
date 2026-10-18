@@ -60,4 +60,17 @@ CREATE TABLE IF NOT EXISTS saved_user_data (
     created_at TIMESTAMPTZ NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL
 );
+-- Remove legacy duplicates before enforcing the one-row-per-user/type policy.
+WITH ranked AS (
+    SELECT id, ROW_NUMBER() OVER (
+        PARTITION BY user_id, data_type
+        ORDER BY updated_at DESC, created_at DESC, id DESC
+    ) AS row_number
+    FROM saved_user_data
+)
+DELETE FROM saved_user_data AS saved
+USING ranked
+WHERE saved.id = ranked.id AND ranked.row_number > 1;
+CREATE UNIQUE INDEX IF NOT EXISTS saved_user_data_user_type_uidx
+    ON saved_user_data(user_id, data_type);
 CREATE INDEX IF NOT EXISTS saved_user_data_user_type_idx ON saved_user_data(user_id, data_type, updated_at DESC);

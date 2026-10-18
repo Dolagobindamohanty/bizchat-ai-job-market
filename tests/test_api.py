@@ -1,9 +1,11 @@
 import csv
+import pandas as pd
 
 from fastapi.testclient import TestClient
 
 import api.main as api_main
 from api.main import app, load_jobs
+from bizchat.analytics import prepare_jobs
 
 
 client = TestClient(app)
@@ -107,3 +109,74 @@ def test_validation_reports_invalid_data_without_network_or_secrets(tmp_path, mo
     assert body["missing_source_urls"] == 1
     assert body["invalid_timestamps"] == 2
     assert body["deployment_safe"] is False
+
+
+def test_cors_allows_bizchat_project_and_localhost_but_not_other_vercel_projects():
+    allowed = client.options("/api/health", headers={"Origin": "https://bizchat-ai-job-market.vercel.app", "Access-Control-Request-Method": "GET"})
+    localhost = client.options("/api/health", headers={"Origin": "http://localhost:5173", "Access-Control-Request-Method": "GET"})
+    denied = client.options("/api/health", headers={"Origin": "https://another-project.vercel.app", "Access-Control-Request-Method": "GET"})
+
+    assert allowed.headers["access-control-allow-origin"] == "https://bizchat-ai-job-market.vercel.app"
+    assert localhost.headers["access-control-allow-origin"] == "http://localhost:5173"
+    assert "access-control-allow-origin" not in denied.headers
+
+
+def test_cors_allows_bizchat_preview_deployment_but_not_similar_project():
+    preview = client.options(
+        "/api/health",
+        headers={"Origin": "https://bizchat-ai-job-market-git-main.vercel.app", "Access-Control-Request-Method": "GET"},
+    )
+    similar = client.options(
+        "/api/health",
+        headers={"Origin": "https://bizchat-ai-job-marketing.vercel.app", "Access-Control-Request-Method": "GET"},
+    )
+
+    assert preview.headers["access-control-allow-origin"] == "https://bizchat-ai-job-market-git-main.vercel.app"
+    assert "access-control-allow-origin" not in similar.headers
+
+
+def test_request_guard_rejects_oversized_body():
+    response = client.post(
+        "/api/search/semantic",
+        content="{}",
+        headers={"Content-Length": str(300 * 1024), "Content-Type": "application/json"},
+    )
+
+    assert response.status_code == 413
+
+
+def test_jobs_serialize_missing_salary_source_url_and_nat_as_null(monkeypatch):
+    jobs = prepare_jobs(pd.DataFrame([{
+        "job_id": "missing-1", "title": "Data Engineer", "company": "Example",
+        "location": "Pune", "source": "Feed", "source_url": None,
+        "posted_date": pd.NaT, "description": "Python", "salary_min_lpa": None,
+         "salary_max_lpa": None, "experience_min": None, "remote_type": None,
+         "description": None,
+    }]))
+    monkeypatch.setattr(api_main, "load_jobs", lambda: jobs)
+
+    response = client.get("/api/jobs")
+
+    assert response.status_code == 200
+    item = response.json()["items"][0]
+    assert item["source_url"] is None
+    assert item["salary_min_lpa"] is None
+    assert item["salary_max_lpa"] is None
+    assert item["posted_date"] is None
+    assert item["remote_type"] is None
+    assert item["description"] is None
+
+
+def test_date_filters_are_nat_safe_and_reversed_ranges_are_rejected(monkeypatch):
+    jobs = prepare_jobs(pd.DataFrame([
+        {"job_id": "dated", "title": "Engineer", "company": "Example", "location": "Pune", "source": "Feed", "source_url": "https://example.com/1", "posted_date": "2026-01-10", "description": "", "remote_type": "Unknown"},
+        {"job_id": "missing", "title": "Engineer", "company": "Example", "location": "Pune", "source": "Feed", "source_url": "https://example.com/2", "posted_date": None, "description": "", "remote_type": "Unknown"},
+    ]))
+    monkeypatch.setattr(api_main, "load_jobs", lambda: jobs)
+
+    filtered = client.get("/api/jobs", params={"start_date": "2026-01-01", "end_date": "2026-01-31"})
+    reversed_range = client.get("/api/jobs", params={"start_date": "2026-02-01", "end_date": "2026-01-01"})
+
+    assert filtered.status_code == 200
+    assert [item["job_id"] for item in filtered.json()["items"]] == ["dated"]
+    assert reversed_range.status_code == 422

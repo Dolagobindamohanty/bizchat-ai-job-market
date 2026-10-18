@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from datetime import date
 import json
+import os
 import re
+import time
+from collections import defaultdict, deque
 from functools import lru_cache
 from pathlib import Path
 from typing import Annotated
@@ -10,17 +13,21 @@ from typing import Annotated
 import pandas as pd
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import JSONResponse, Response
 from pydantic import BaseModel, Field
 
 from bizchat.analytics import prepare_jobs, recommendations, skill_demand, top_cities, roles_over_time, salary_distribution_by_role
 from collector.validate import validation_report
 from database.repository import DatabaseRepository, get_repository
-from api.auth import current_user
+from api.auth import admin_user, current_user
+from api.serialization import json_safe
 from bizchat.advanced import alert_preview, resume_match, semantic_search, trend_forecast
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DATA_PATH = ROOT / "data" / "raw" / "jobs.csv"
+DATA_PATH = Path(os.getenv("BIZCHAT_DATA_PATH", str(ROOT / "data" / "raw" / "jobs.csv")))
 
 
 class Overview(BaseModel):
@@ -73,11 +80,11 @@ class JobListing(BaseModel):
     salary_max_lpa: float | None
     salary_mid_lpa: float | None
     experience_min: float | None
-    remote_type: str
+    remote_type: str | None = None
     source: str
-    source_url: str
+    source_url: str | None
     posted_date: date | None
-    description: str
+    description: str | None = None
     skills: list[str]
 
 
@@ -163,20 +170,81 @@ class SavedDataResponse(BaseModel):
 
 
 app = FastAPI(title="BizChat API", version="2.0.0")
+
+
+class RequestGuardMiddleware(BaseHTTPMiddleware):
+    """Bound request bodies and expensive public endpoints per process.
+
+    Render's proxy should provide the primary rate limit for multi-worker or
+    multi-instance deployments. This small local guard still prevents an
+    accidental request storm from exhausting one worker.
+    """
+
+    MAX_BODY_BYTES = int(os.getenv("MAX_REQUEST_BODY_BYTES", str(256 * 1024)))
+    WINDOW_SECONDS = 60
+    EXPENSIVE_LIMIT = int(os.getenv("EXPENSIVE_REQUESTS_PER_MINUTE", "30"))
+    EXPENSIVE_PATHS = {
+        "/api/match-resume",
+        "/api/search/semantic",
+        "/api/chat/query",
+        "/api/chat",
+        "/api/alerts/preview",
+    }
+    _requests: dict[tuple[str, str], deque[float]] = defaultdict(deque)
+
+    async def dispatch(self, request: Request, call_next) -> Response:
+        if request.method == "OPTIONS":
+            return await call_next(request)
+        content_length = request.headers.get("content-length")
+        if content_length:
+            try:
+                if int(content_length) > self.MAX_BODY_BYTES:
+                    return JSONResponse(status_code=413, content={"detail": "Request body is too large"})
+            except ValueError:
+                return JSONResponse(status_code=400, content={"detail": "Invalid Content-Length"})
+
+        if request.url.path in self.EXPENSIVE_PATHS:
+            client = request.client.host if request.client else "unknown"
+            key = (client, request.url.path)
+            now = time.monotonic()
+            if len(self._requests) > 10_000:
+                for stale_key in [
+                    candidate for candidate, candidate_bucket in self._requests.items()
+                    if not candidate_bucket or now - candidate_bucket[-1] >= self.WINDOW_SECONDS
+                ]:
+                    del self._requests[stale_key]
+            bucket = self._requests[key]
+            while bucket and now - bucket[0] >= self.WINDOW_SECONDS:
+                bucket.popleft()
+            if len(bucket) >= self.EXPENSIVE_LIMIT:
+                response = JSONResponse(status_code=429, content={"detail": "Too many requests"})
+                response.headers["Retry-After"] = str(self.WINDOW_SECONDS)
+                return response
+            bucket.append(now)
+        return await call_next(request)
+
+
+app.add_middleware(RequestGuardMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[],
-    allow_origin_regex=r"^https://[a-z0-9-]+\.vercel\.app$|^https?://(?:localhost|127\.0\.0\.1)(?::\d+)?$",
+    allow_origin_regex=r"^(?:https://bizchat-ai-job-market(?:-[a-z0-9-]+)?\.vercel\.app|https?://(?:localhost|127\.0\.0\.1)(?::\d+)?)$",
     allow_credentials=False,
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
 )
 
 
-@lru_cache(maxsize=1)
+@lru_cache(maxsize=2)
+def _load_jobs(path: str, modified_ns: int, file_size: int) -> pd.DataFrame:
+    """Load and normalize one version of the local source."""
+    return prepare_jobs(pd.read_csv(path))
+
+
 def load_jobs() -> pd.DataFrame:
-    """Load and normalize the local source once per process."""
-    return prepare_jobs(pd.read_csv(DATA_PATH))
+    """Load and normalize the current source version."""
+    stat = DATA_PATH.stat()
+    return _load_jobs(str(DATA_PATH), stat.st_mtime_ns, stat.st_size)
 
 
 def repository() -> DatabaseRepository:
@@ -195,15 +263,17 @@ def filtered_jobs(
     remote_type: str | None = None,
     skill: str | None = None,
 ) -> pd.DataFrame:
+    if start_date and end_date and start_date > end_date:
+        raise HTTPException(status_code=422, detail="start_date must be on or before end_date")
     jobs = load_jobs()
     if city:
         jobs = jobs[jobs["location"] == city]
     if source:
         jobs = jobs[jobs["source"] == source]
     if start_date:
-        jobs = jobs[jobs["posted_date"].dt.date >= start_date]
+        jobs = jobs[jobs["posted_date"] >= pd.Timestamp(start_date)]
     if end_date:
-        jobs = jobs[jobs["posted_date"].dt.date <= end_date]
+        jobs = jobs[jobs["posted_date"] < pd.Timestamp(end_date) + pd.Timedelta(days=1)]
     if role_type:
         jobs = jobs[jobs["role_type"].str.casefold() == role_type.casefold()]
     if experience_level:
@@ -231,10 +301,6 @@ FilterRemote = Annotated[str | None, Query(description="Remote, Hybrid, On-site,
 FilterSkill = Annotated[str | None, Query(description="Canonical skill")]
 
 
-def filter_args(city, source, start_date, end_date, role_type, experience_level, min_salary_lpa, max_salary_lpa, remote_type, skill):
-    return filtered_jobs(city, source, start_date, end_date, role_type, experience_level, min_salary_lpa, max_salary_lpa, remote_type, skill)
-
-
 def filtered_jobs_dependency(
     city: FilterCity = None, source: FilterSource = None,
     start_date: FilterStart = None, end_date: FilterEnd = None,
@@ -254,7 +320,8 @@ def health() -> dict[str, str]:
 @app.get("/api/validation", response_model=ValidationResponse)
 def validation() -> ValidationResponse:
     """Return the network-free readiness checks for the deployed dataset."""
-    report = validation_report(DATA_PATH)
+    stat = DATA_PATH.stat()
+    report = _validation_report(str(DATA_PATH), stat.st_mtime_ns, stat.st_size)
     return ValidationResponse(
         api_status="ok",
         dataset_row_count=report.dataset_row_count,
@@ -264,6 +331,12 @@ def validation() -> ValidationResponse:
         invalid_timestamps=report.invalid_timestamps,
         deployment_safe=report.deployment_safe,
     )
+
+
+@lru_cache(maxsize=4)
+def _validation_report(data_path: str, modified_ns: int, file_size: int):
+    """Cache validation by path and file identity so replacements are seen."""
+    return validation_report(Path(data_path))
 
 
 @app.get("/api/overview", response_model=Overview)
@@ -326,30 +399,21 @@ def salaries(jobs: pd.DataFrame = Depends(filtered_jobs_dependency)) -> Salaries
 
 @app.get("/api/jobs", response_model=JobsResponse)
 def job_listings(
-    city: FilterCity = None,
-    source: FilterSource = None,
-    start_date: FilterStart = None,
-    end_date: FilterEnd = None,
-    role_type: FilterRole = None,
-    experience_level: FilterExperience = None,
-    min_salary_lpa: FilterMinSalary = None,
-    max_salary_lpa: FilterMaxSalary = None,
-    remote_type: FilterRemote = None,
-    skill: FilterSkill = None,
+    jobs: pd.DataFrame = Depends(filtered_jobs_dependency),
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> JobsResponse:
-    jobs = filter_args(city, source, start_date, end_date, role_type, experience_level, min_salary_lpa, max_salary_lpa, remote_type, skill).sort_values(
+    jobs = jobs.sort_values(
         ["posted_date", "job_id"], ascending=[False, True], na_position="last"
     )
     total = len(jobs)
     page_jobs = jobs.iloc[(page - 1) * page_size : page * page_size]
-    items = [JobListing(**{**row, "posted_date": row["posted_date"].date() if pd.notna(row["posted_date"]) else None, "skills": row["skills"]}) for row in page_jobs.to_dict(orient="records")]
+    items = [JobListing(**json_safe({**row, "job_id": str(row["job_id"]), "posted_date": row["posted_date"].date() if pd.notna(row["posted_date"]) else None, "skills": row["skills"]})) for row in page_jobs.to_dict(orient="records")]
     return JobsResponse(items=items, total=total, page=page, page_size=page_size)
 
 
 @lru_cache(maxsize=4)
-def _static_metadata(data_path: str) -> dict:
+def _static_metadata(data_path: str, modified_ns: int, file_size: int) -> dict:
     path = Path(data_path)
     report = validation_report(path)
     collected = pd.to_datetime(pd.read_csv(path, usecols=["collected_at"])["collected_at"], errors="coerce")
@@ -363,14 +427,15 @@ def _static_metadata(data_path: str) -> dict:
 
 
 def _metadata(jobs: pd.DataFrame) -> AnalyticsMetadata:
-    return AnalyticsMetadata(**_static_metadata(str(DATA_PATH)), filtered_rows=len(jobs))
+    stat = DATA_PATH.stat()
+    return AnalyticsMetadata(**_static_metadata(str(DATA_PATH), stat.st_mtime_ns, stat.st_size), filtered_rows=len(jobs))
 
 
 @app.get("/api/analytics/top-cities")
 @app.get("/api/analytics/cities", include_in_schema=False)
 @app.get("/api/analytics/top_cities", include_in_schema=False)
 def analytics_top_cities(jobs: pd.DataFrame = Depends(filtered_jobs_dependency)) -> dict:
-    return {"items": top_cities(jobs).to_dict(orient="records"), "metadata": _metadata(jobs).model_dump()}
+    return json_safe({"items": top_cities(jobs).to_dict(orient="records"), "metadata": _metadata(jobs).model_dump()})
 
 
 @app.get("/api/analytics/top-skills")
@@ -382,20 +447,20 @@ def analytics_top_skills(jobs: pd.DataFrame = Depends(filtered_jobs_dependency))
 @app.get("/api/analytics/roles-over-time")
 @app.get("/api/analytics/roles_over_time", include_in_schema=False)
 def analytics_roles_over_time(frequency: Annotated[str, Query(pattern="^(week|month)$")] = "month", jobs: pd.DataFrame = Depends(filtered_jobs_dependency)) -> dict:
-    return {"items": roles_over_time(jobs, frequency).to_dict(orient="records"), "metadata": _metadata(jobs).model_dump()}
+    return json_safe({"items": roles_over_time(jobs, frequency).to_dict(orient="records"), "metadata": _metadata(jobs).model_dump()})
 
 
 @app.get("/api/analytics/salary-distribution-by-role")
 @app.get("/api/analytics/salary-distribution", include_in_schema=False)
 @app.get("/api/analytics/salary_distribution_by_role", include_in_schema=False)
 def analytics_salary_distribution(jobs: pd.DataFrame = Depends(filtered_jobs_dependency)) -> dict:
-    return {"items": salary_distribution_by_role(jobs).to_dict(orient="records"), "metadata": _metadata(jobs).model_dump()}
+    return json_safe({"items": salary_distribution_by_role(jobs).to_dict(orient="records"), "metadata": _metadata(jobs).model_dump()})
 
 
 @app.get("/api/data-quality")
 def data_quality() -> dict:
     jobs = load_jobs()
-    return {"metadata": _metadata(jobs).model_dump()}
+    return json_safe({"metadata": _metadata(jobs).model_dump()})
 
 
 CHAT_INTENTS = {
@@ -426,13 +491,13 @@ def chat_query(request: ChatRequest) -> ChatResponse:
         result = roles_over_time(jobs).to_dict(orient="records")
     else:
         result = salary_distribution_by_role(jobs).to_dict(orient="records")
-    return ChatResponse(supported=True, intent=intent, result=result, message="Query answered from the local analytics dataset.")
+    return ChatResponse(supported=True, intent=intent, result=json_safe(result), message="Query answered from the local analytics dataset.")
 
 
 @app.get("/api/job-history", response_model=JobHistoryResponse)
 @app.get("/api/jobs/history", response_model=JobHistoryResponse, include_in_schema=False)
 @app.get("/api/job-runs", response_model=JobHistoryResponse, include_in_schema=False)
-def job_history(limit: Annotated[int, Query(ge=1, le=100)] = 30, user_id: str = Depends(current_user), repo: DatabaseRepository = Depends(repository)) -> JobHistoryResponse:
+def job_history(limit: Annotated[int, Query(ge=1, le=100)] = 30, user_id: str = Depends(admin_user), repo: DatabaseRepository = Depends(repository)) -> JobHistoryResponse:
     return JobHistoryResponse(items=repo.list_job_runs(limit))
 
 
@@ -440,7 +505,12 @@ def save_data(data_type: str, payload: dict, user_id: str, repo: DatabaseReposit
     payload_size = len(json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8"))
     if payload_size > 20 * 1024:
         raise HTTPException(status_code=413, detail="Saved payload exceeds the 20KB limit")
-    return SavedDataResponse(**repo.save_user_data(user_id, data_type, payload))
+    try:
+        return SavedDataResponse(**repo.save_user_data(user_id, data_type, payload))
+    except ValueError as exc:
+        if "20KB" in str(exc):
+            raise HTTPException(status_code=413, detail="Saved payload exceeds the 20KB limit") from exc
+        raise
 
 
 def list_data(data_type: str, user_id: str, repo: DatabaseRepository) -> list[SavedDataResponse]:
@@ -514,26 +584,26 @@ def learning_recommendations(
 @app.post("/api/match-resume")
 def match_resume(request: ResumeMatchRequest) -> dict:
     """Compare resume skills with local target-role demand; no model or network calls."""
-    return resume_match(request.resume_text, request.target_role, request.years_experience, load_jobs())
+    return json_safe(resume_match(request.resume_text, request.target_role, request.years_experience, load_jobs()))
 
 
 @app.get("/api/trends/forecast")
 def trends_forecast() -> dict:
     """Return week-over-week demand and a deterministic next-period baseline."""
-    return trend_forecast(load_jobs())
+    return json_safe(trend_forecast(load_jobs()))
 
 
 @app.get("/api/search/semantic", response_model=SemanticSearchResponse)
 def semantic_search_get(q: Annotated[str, Query(min_length=1, max_length=500)], limit: Annotated[int, Query(ge=1, le=100)] = 20) -> SemanticSearchResponse:
-    return SemanticSearchResponse(query=q, integration="deterministic local token/skill relevance; pgvector integration boundary documented, not enabled", items=semantic_search(q, load_jobs(), limit))
+    return SemanticSearchResponse(query=q, integration="deterministic local token/skill relevance; pgvector integration boundary documented, not enabled", items=json_safe(semantic_search(q, load_jobs(), limit)))
 
 
 @app.post("/api/search/semantic", response_model=SemanticSearchResponse)
 def semantic_search_post(request: SemanticSearchRequest) -> SemanticSearchResponse:
-    return SemanticSearchResponse(query=request.query, integration="deterministic local token/skill relevance; pgvector integration boundary documented, not enabled", items=semantic_search(request.query, load_jobs(), request.limit))
+    return SemanticSearchResponse(query=request.query, integration="deterministic local token/skill relevance; pgvector integration boundary documented, not enabled", items=json_safe(semantic_search(request.query, load_jobs(), request.limit)))
 
 
 @app.post("/api/alerts/preview")
 def alerts_preview(request: AlertPreviewRequest) -> dict:
     filters = request.filters or {key: value for key, value in request.model_extra.items() if key != "filters"}
-    return alert_preview(filters, load_jobs())
+    return json_safe(alert_preview(filters, load_jobs()))

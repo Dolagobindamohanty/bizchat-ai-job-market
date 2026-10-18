@@ -29,6 +29,20 @@ CREATE TABLE IF NOT EXISTS saved_user_data (
     created_at TIMESTAMPTZ NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL
 );
+-- Keep one current document per owner and document type. The cleanup makes
+-- this safe to apply to installations created before the unique index existed.
+WITH ranked AS (
+    SELECT id, ROW_NUMBER() OVER (
+        PARTITION BY user_id, data_type
+        ORDER BY updated_at DESC, created_at DESC, id DESC
+    ) AS row_number
+    FROM saved_user_data
+)
+DELETE FROM saved_user_data AS saved
+USING ranked
+WHERE saved.id = ranked.id AND ranked.row_number > 1;
+CREATE UNIQUE INDEX IF NOT EXISTS saved_user_data_user_type_uidx
+    ON saved_user_data(user_id, data_type);
 CREATE INDEX IF NOT EXISTS saved_user_data_user_type_idx ON saved_user_data(user_id, data_type, updated_at DESC);
 """
 
@@ -96,18 +110,39 @@ class DatabaseRepository:
     def save_user_data(self, user_id: str, data_type: str, payload: dict[str, Any]) -> dict[str, Any]:
         if data_type not in {"profile", "search", "learning_plan"}:
             raise ValueError("unsupported saved data type")
+        if len(json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8")) > 20 * 1024:
+            raise ValueError("saved payload exceeds the 20KB limit")
         now = datetime.now(timezone.utc).isoformat()
         record = {"id": str(uuid.uuid4()), "user_id": user_id, "data_type": data_type,
                   "payload": payload, "created_at": now, "updated_at": now}
         if self.postgres_enabled:
             with self._connection_factory() as connection:
                 with connection.cursor() as cursor:
-                    cursor.execute("INSERT INTO saved_user_data (id, user_id, data_type, payload, created_at, updated_at) VALUES (%s, %s, %s, %s::jsonb, %s, %s)",
+                    cursor.execute("""INSERT INTO saved_user_data
+                        (id, user_id, data_type, payload, created_at, updated_at)
+                        VALUES (%s, %s, %s, %s::jsonb, %s, %s)
+                        ON CONFLICT (user_id, data_type) DO UPDATE SET
+                            payload = EXCLUDED.payload,
+                            updated_at = EXCLUDED.updated_at
+                        RETURNING id, user_id, data_type, payload, created_at, updated_at""",
                                    (record["id"], user_id, data_type, json.dumps(payload), now, now))
+                    # Keep compatibility with lightweight repository test
+                    # doubles that only model execute/commit.
+                    if hasattr(cursor, "fetchone"):
+                        row = cursor.fetchone()
+                        if row is not None:
+                            record = dict(zip(("id", "user_id", "data_type", "payload", "created_at", "updated_at"), row))
+                            record = self._json_dates(record)
                 connection.commit()
         else:
             with self._lock:
-                self._saved.append(record)
+                existing = next((item for item in self._saved
+                                 if item["user_id"] == user_id and item["data_type"] == data_type), None)
+                if existing is None:
+                    self._saved.append(record)
+                else:
+                    existing.update(payload=payload, updated_at=now)
+                    record = existing
         return record
 
     def list_user_data(self, user_id: str, data_type: str) -> list[dict[str, Any]]:

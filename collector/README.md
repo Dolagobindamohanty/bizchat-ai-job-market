@@ -1,9 +1,33 @@
 # Safe daily collector boundary
 
-The collector is intentionally a local validation/normalization boundary. It
-does **not** scrape websites, log in to portals, bypass CAPTCHAs or robots
-controls, or need API keys. The scheduled workflow currently runs only the
-network-free placeholder check in `collector.validate`.
+The collector uses documented JSON APIs only. It does **not** scrape websites,
+log in to portals, or bypass CAPTCHAs or robots controls. Run
+`python -m collector.cli --output data/raw/jobs-live.csv` to fetch Arbeitnow and
+the optional Adzuna provider and write a validated snapshot. Adzuna is enabled
+only when `ADZUNA_APP_ID` and `ADZUNA_APP_KEY` are present in the environment.
+
+## Greenhouse Job Board API
+
+Greenhouse is opt-in and requires an explicit JSON board list; this repository
+does not claim or seed verified company tokens. Copy
+`collector/greenhouse.example.json`, replace the example token with a verified
+public board token, and adjust `india_location_keywords` for the locations you
+want included. Run:
+
+```sh
+python -m collector.cli --output data/raw/jobs-live.csv \
+  --greenhouse-config collector/greenhouse.example.json
+```
+
+The adapter uses only Greenhouse's official unauthenticated endpoint
+`https://boards-api.greenhouse.io/v1/boards/{board_token}/jobs?content=true`.
+It preserves Greenhouse job IDs and absolute URLs, converts the API's HTML
+content to plain text, and prefers `updated_at` over `first_published` for the
+snapshot date. Boards are bounded by the explicit config (maximum 100) and a
+request timeout. Per-board failures are reported and do not discard successful
+boards. Review Greenhouse's current API terms and each board's attribution or
+usage requirements before operating a collection; this project does not grant
+permission beyond the public endpoint.
 
 ## Permitted source ingestion
 

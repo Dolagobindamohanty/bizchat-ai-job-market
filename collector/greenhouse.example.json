@@ -1,0 +1,21 @@
+{
+  "boards": [
+    {
+      "name": "Example company",
+      "board_token": "replace-with-verified-board-token",
+      "company": "Example company"
+    }
+  ],
+  "india_location_keywords": [
+    "india",
+    "bengaluru",
+    "bangalore",
+    "mumbai",
+    "pune",
+    "hyderabad",
+    "delhi",
+    "gurugram",
+    "noida",
+    "chennai"
+  ]
+}

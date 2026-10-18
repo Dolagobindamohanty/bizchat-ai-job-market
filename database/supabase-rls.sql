@@ -9,6 +9,22 @@ ALTER TABLE public.saved_user_data
     ALTER COLUMN created_at SET DEFAULT now(),
     ALTER COLUMN updated_at SET DEFAULT now();
 
+-- Existing deployments may contain multiple historical rows. Keep the most
+-- recently updated row for each owner/type, then enforce the upsert key.
+WITH ranked AS (
+    SELECT id, ROW_NUMBER() OVER (
+        PARTITION BY user_id, data_type
+        ORDER BY updated_at DESC, created_at DESC, id DESC
+    ) AS row_number
+    FROM public.saved_user_data
+)
+DELETE FROM public.saved_user_data AS saved
+USING ranked
+WHERE saved.id = ranked.id AND ranked.row_number > 1;
+
+CREATE UNIQUE INDEX IF NOT EXISTS saved_user_data_user_type_uidx
+    ON public.saved_user_data(user_id, data_type);
+
 ALTER TABLE public.job_runs
     ALTER COLUMN id SET DEFAULT gen_random_uuid(),
     ALTER COLUMN started_at SET DEFAULT now();

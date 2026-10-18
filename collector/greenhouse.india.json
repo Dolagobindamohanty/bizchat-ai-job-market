@@ -1,0 +1,23 @@
+{
+  "boards": [
+    {"name": "Coinbase", "company": "Coinbase", "board_token": "coinbase"},
+    {"name": "Stripe", "company": "Stripe", "board_token": "stripe"},
+    {"name": "Databricks", "company": "Databricks", "board_token": "databricks"},
+    {"name": "Scale AI", "company": "Scale AI", "board_token": "scaleai"},
+    {"name": "Airbnb", "company": "Airbnb", "board_token": "airbnb"},
+    {"name": "Groww", "company": "Groww", "board_token": "groww"}
+  ],
+  "india_location_keywords": [
+    "india",
+    "bengaluru",
+    "bangalore",
+    "mumbai",
+    "pune",
+    "hyderabad",
+    "delhi",
+    "gurugram",
+    "gurgaon",
+    "noida",
+    "chennai"
+  ]
+}

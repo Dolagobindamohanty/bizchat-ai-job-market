@@ -5,7 +5,7 @@ import os
 from typing import Annotated
 from urllib.parse import urlsplit
 
-from fastapi import Header, HTTPException, status
+from fastapi import Depends, Header, HTTPException, status
 import jwt
 
 
@@ -50,3 +50,11 @@ def current_user(authorization: Annotated[str | None, Header()] = None) -> str:
         return subject
     except (jwt.PyJWTError, ValueError, TypeError) as exc:
         raise unauthorized from exc
+
+
+def admin_user(user_id: str = Depends(current_user)) -> str:
+    """Require an authenticated subject listed in the explicit admin allowlist."""
+    admin_ids = {item.strip() for item in os.getenv("ADMIN_USER_IDS", "").split(",") if item.strip()}
+    if user_id not in admin_ids:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Administrator access required")
+    return user_id

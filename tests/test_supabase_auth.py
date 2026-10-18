@@ -49,6 +49,11 @@ def test_saved_routes_require_auth_for_reads_and_writes(path):
         assert response.headers["www-authenticate"] == "Bearer"
 
 
+def test_job_history_rejects_authenticated_non_admin(monkeypatch):
+    monkeypatch.setenv("ADMIN_USER_IDS", "22222222-2222-4222-8222-222222222222")
+    assert client.get("/api/job-history", headers=headers(token())).status_code == 403
+
+
 @pytest.mark.parametrize("value", ["", "Basic secret", "Bearer", "Bearer bad", "Bearer a b"])
 def test_invalid_authorization(value):
     assert client.get("/api/saved/profile", headers={"Authorization": value}).status_code == 401
