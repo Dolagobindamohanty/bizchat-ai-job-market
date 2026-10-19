@@ -1,0 +1,67 @@
+name: Refresh live Greenhouse jobs
+
+on:
+  schedule:
+    # Run daily at 06:17 UTC. The workflow_dispatch trigger supports an
+    # immediate refresh without waiting for the next scheduled run.
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: greenhouse-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Fetch and validate Greenhouse India snapshot
+        run: >-
+          python -m collector.cli
+          --output data/raw/jobs-greenhouse-india.csv
+          --greenhouse-config collector/greenhouse.india.json
+          --greenhouse-only
+          --max-pages 1
+          --page-size 100
+          --timeout 20
+
+      - name: Verify snapshot is non-empty and deployment-safe
+        run: |
+          python -m collector.validate --input data/raw/jobs-greenhouse-india.csv
+          python - <<'PY'
+          import csv
+          from pathlib import Path
+
+          path = Path("data/raw/jobs-greenhouse-india.csv")
+          with path.open(encoding="utf-8", newline="") as handle:
+              rows = list(csv.DictReader(handle))
+          if not rows:
+              raise SystemExit("Refusing to publish an empty Greenhouse snapshot")
+          print(f"Validated {len(rows)} live Greenhouse rows")
+          PY
+
+      - name: Publish changed snapshot
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/raw/jobs-greenhouse-india.csv
+          if git diff --cached --quiet; then
+            echo "No snapshot changes to publish"
+            exit 0
+          fi
+          git commit -m "chore: refresh live greenhouse jobs"
+          git push origin HEAD:main
