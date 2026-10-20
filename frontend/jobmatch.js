@@ -63,7 +63,8 @@
     const response = await fetchAPI(path,options);
     if (!response.ok) {
       let detail = ''; try { const body = await response.json(); detail = typeof body.detail === 'string' ? body.detail : ''; } catch (_) {}
-      throw Error(response.status===503 && external ? `External AI integration is unavailable (503). ${detail} Baseline matching remains available with embeddings disabled.` : `Request failed (${response.status}). ${detail || 'Please retry when the API is available.'}`);
+      if(response.status===503 && external){const error=Error('External AI is not configured on the server. Baseline matching remains available without embeddings.');error.externalUnavailable=true;throw error;}
+      throw Error(`Request failed (${response.status}). ${detail || 'Please retry when the API is available.'}`);
     }
     return response.json();
   }
@@ -104,7 +105,7 @@
         state.profile = result.profile; state.matches = null; state.suggestions = null; state.notice='Resume parsed. Review and correct your extracted profile below.';
       } else if (kind==='match') { state.matches=result; state.notice='Matching complete. Explore My Matches, Role Fit and Skill Gaps.'; }
       else { state.suggestions=result; state.notice='Suggestions received. Verify them before editing your resume.'; }
-    } catch (error) { if (epoch !== generation) return; state.error=error.message || 'The service is unavailable. Please retry.'; }
+    } catch (error) { if (epoch !== generation) return; if(error.externalUnavailable){state.error='';state.embeddings=false;state.matchConsent=false;state.suggestionConsent=false;state.notice='External AI is not configured on the server. Baseline matching remains available — turn off embeddings and run matching again.';}else state.error=error.message || 'The service is unavailable. Please retry.'; }
     finally { if (epoch === generation) { state.busy=''; paint(); } }
   }
   function clearSession() {

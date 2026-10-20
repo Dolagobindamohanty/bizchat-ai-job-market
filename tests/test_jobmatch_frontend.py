@@ -130,7 +130,8 @@ def test_external_ai_requires_explicit_request_and_consent_and_reports_503():
       assert(!calls.some(call=>call.path.endsWith('/resume/match')));
       assert(root.innerHTML.includes('require explicit consent'));
       input('matchConsent',true);providerUnavailable=true;click('match');await tick();
-      assert(root.innerHTML.includes('unavailable (503)'));
+      assert(!root.innerHTML.includes('unavailable (503)'));
+      assert(root.innerHTML.includes('External AI is not configured on the server'));
       assert(root.innerHTML.includes('Baseline matching remains available'));
       navigate('Resume Suggestions');
       assert(!calls.some(call=>call.path.endsWith('/resume/suggestions')));
