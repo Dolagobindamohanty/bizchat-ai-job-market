@@ -104,7 +104,7 @@
         state.profile = result.profile; state.matches = null; state.suggestions = null; state.notice='Resume parsed. Review and correct your extracted profile below.';
       } else if (kind==='match') { state.matches=result; state.notice='Matching complete. Explore My Matches, Role Fit and Skill Gaps.'; }
       else { state.suggestions=result; state.notice='Suggestions received. Verify them before editing your resume.'; }
-    } catch (error) { if (epoch !== generation) return; if(error.externalUnavailable){state.error='';state.embeddings=false;state.matchConsent=false;state.suggestionConsent=false;state.notice='External AI is not configured on the server. Baseline matching remains available — turn off embeddings and run matching again.';}else state.error=error.message || 'The service is unavailable. Please retry.'; }
+    } catch (error) { if (epoch !== generation) return; if(error.externalUnavailable){state.error='';state.embeddings=false;state.matchConsent=false;state.suggestionConsent=false;state.notice='External AI is not configured on the server. Baseline matching remains available — turn off embeddings and run matching again.';}else if(error?.name==='AbortError'){state.error='Local semantic matching took too long to start. The server may be waking up or loading the MiniLM model; try again in a moment, or turn off embeddings for immediate baseline matching.';}else state.error=error.message || 'The service is unavailable. Please retry.'; }
     finally { if (epoch === generation) { state.busy=''; paint(); } }
   }
   function clearSession() {
