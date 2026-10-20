@@ -9,7 +9,7 @@ BizChat 2.0 is a production-style web application for understanding India's AI/M
 ## Features
 
 - **JobMatch Bengaluru:** Bengaluru-only tech discovery, PDF/DOCX or pasted-resume parsing, editable profiles, ranked matches, role fit, and skill gaps.
-- Optional consent-gated **hosted embeddings and grounded LLM skill suggestions**, with server-only provider configuration and no resume persistence. See [setup, privacy, and limitations](docs/jobmatch-bengaluru.md).
+- **Local semantic resume matching** works without an API key or model download; optional consent-gated hosted embeddings and grounded LLM skill suggestions remain available when configured server-side. See [setup, privacy, and limitations](docs/jobmatch-bengaluru.md).
 - Multi-source company-board collection from **Greenhouse, Lever, and Ashby**, with source/company/role/skill filtering. Live snapshot: `data/raw/jobs-india.csv`; coverage and collection receipts: `data/source-collection-report.json`.
 - KPI cards for tracked jobs, median salary, top skill, and leading city
 - Skill demand rankings and weekly comparisons
@@ -125,7 +125,7 @@ The previous Streamlit MVP remains in `dashboard/app.py` for reference, but BizC
 - **Frontend:** dependency-free HTML, CSS, and JavaScript hosted on Vercel
 - **Backend:** FastAPI, Pandas, and Python hosted on Render
 - **Storage:** CSV sample mode with PostgreSQL/Supabase schema and RLS for production persistence
-- **NLP:** normalized skill aliases and phrase matching
+- **NLP:** normalized skill aliases, phrase matching, and deterministic local hash-vector matching
 - **Auth:** Supabase Auth with PKCE and email magic links
 - **Quality:** pytest, GitHub Actions validation, deployment readiness endpoint
 

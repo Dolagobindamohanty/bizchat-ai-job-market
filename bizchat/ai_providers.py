@@ -146,7 +146,7 @@ def _embeddings(config: tuple[str, str, str], texts: list[str]) -> list[list[flo
 
 
 def _local_encoder():
-    """Load sentence-transformers only when local semantic matching is requested."""
+    """Load an optional transformer only when explicitly configured."""
     global _local_model
     if _local_model is not None:
         return _local_model
@@ -163,7 +163,7 @@ def _local_encoder():
 
 
 def local_semantic_scores(profile: dict, jobs: list[dict]) -> dict[str, float]:
-    """Score public jobs with the optional local MiniLM model.
+    """Score public jobs with the default local matcher or optional transformer.
 
     This path never requires credentials and sends no profile data over the
     network. Import/model loading is lazy so API startup remains lightweight.

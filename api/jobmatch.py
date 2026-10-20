@@ -178,7 +178,7 @@ def create_jobmatch_router(load_jobs: Callable[[], pd.DataFrame]) -> APIRouter:
             except LocalEmbeddingUnavailable:
                 # The optional package/model may be absent in small deployments.
                 # Continue with the explainable deterministic matcher rather than failing.
-                integration = "local deterministic matching fallback; MiniLM unavailable; no external AI call"
+                integration = "local deterministic semantic matching; no external AI call"
             except ProviderError as exc:
                 raise HTTPException(exc.status_code, str(exc)) from None
         return json_safe({**match_jobs(profile, corpus, semantic_scores=scores, limit=payload.limit), "integration": integration})

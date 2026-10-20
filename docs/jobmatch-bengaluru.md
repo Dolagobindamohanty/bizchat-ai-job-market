@@ -34,7 +34,7 @@ Workflow:
 2. Open **Upload Resume** and paste text or select a PDF/DOCX (maximum 5 MiB).
 3. Parse locally and correct extracted skills, titles, and years of experience.
 4. Open **My Matches**. Baseline matching needs no AI credentials.
-5. Enable external embeddings and consent for that individual request if desired.
+5. Enable local semantic matching for a lightweight no-key ranking pass, or enable hosted embeddings and consent for that individual request if desired.
 6. Review **Role Fit**, **Skill Gaps**, and optional **Resume Suggestions**.
 7. **Clear / delete session** discards browser-held resume inputs and results.
 
@@ -42,9 +42,9 @@ Workflow:
 
 Configure these on the backend host only. Both adapters use the OpenAI-compatible
 HTTP protocol; this does not imply that another vendor's model is an OpenAI model.
-Select actual models supported by your chosen provider.
+Select actual models supported by your chosen provider. Hosted providers are optional; the default local semantic matcher does not require provider configuration.
 
-### Selected starting setup: OpenAI
+### Optional hosted setup: OpenAI
 
 The Render configuration selects `JOBMATCH_PROVIDER=openai`,
 `text-embedding-3-small` for embeddings, and `gpt-4.1-mini` for suggestions.
@@ -86,7 +86,7 @@ It cannot certify that a candidate really possesses a skill.
 - `bizchat/job_classifier.py`: explicit-city and conservative title classification.
 - `bizchat/resume_parser.py`: local parsing and bounded PDF/DOCX extraction.
 - `bizchat/matcher.py`: explainable baseline/embedding-assisted scores and gaps.
-- `bizchat/ai_providers.py`: consent-gated hosted adapters and public-vector cache.
+- `bizchat/ai_providers.py`: deterministic local matcher plus consent-gated hosted adapters and public-vector cache.
 - `api/models.py`, `api/jobmatch.py`: bounded stateless request contracts/router.
 - `api/body_limits.py`: streamed request limits, including missing Content-Length.
 - `frontend/jobmatch.js`: six views layered over the original dashboard.
@@ -106,17 +106,19 @@ browser history and access logs. GET routes never retrieve a previous resume.
 Job discovery accepts `q`, `company`, `role`, comma-separated `skills`, `page`, and
 `page_size`. Both AI and ordinary lists are Bengaluru-only.
 
-Embedding scoring weights are skills 50%, cosine similarity 25%, experience 15%,
-and role 10%. Without embeddings, the remaining weights are normalized by 0.75.
+Local and hosted semantic scoring use skills 50%, semantic similarity 25%, experience 15%,
+and role 10%. Without semantic matching, the remaining weights are normalized by 0.75.
 Unknown evidence earns no points and is marked unknown in the breakdown. All skill
 mentions are currently weighted equally; required/preferred distinctions are not
 yet extracted. Scores are evidence-fit measures, not interview/hiring probabilities.
 
-At most 200 locally shortlisted jobs are embedded per request, in batches of 32.
-Public job vectors use a bounded 512-entry in-process cache keyed by endpoint,
-model, and content. Resume vectors are never cached. This is real hosted embedding
-similarity, but not pgvector or a persistent vector index. Role/gap summaries in
-embedding mode describe the shortlisted corpus, not necessarily every available job.
+At most 200 locally shortlisted jobs are scored semantically per request, in batches of 32.
+The default local matcher uses deterministic 256-dimensional token-hash vectors and
+does not call a provider. When a hosted provider is explicitly configured and consented,
+public job vectors use a bounded 512-entry in-process cache keyed by endpoint, model,
+and content; resume vectors are never cached. This is not pgvector or a persistent vector
+index. Role/gap summaries in semantic mode describe the shortlisted corpus, not necessarily
+every available job.
 
 ## Privacy and deployment boundaries
 
@@ -171,7 +173,7 @@ need live testing before calling the product production-ready.
 
 Earlier local core-only smoke measurement on this development machine: ranking 10,000
 synthetic short-description jobs took 2.543 seconds, returning 50 displayed jobs.
-This excludes HTTP, parsing, database reads, hosted embeddings and LLM latency;
+This excludes HTTP, parsing, database reads, hosted provider calls and LLM latency;
 it is not a production throughput guarantee.
 
 ## Multi-source coverage
