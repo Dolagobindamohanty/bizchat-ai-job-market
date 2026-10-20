@@ -174,7 +174,7 @@ def create_jobmatch_router(load_jobs: Callable[[], pd.DataFrame]) -> APIRouter:
                 else:
                     mapped = local_semantic_scores(profile, embedding_jobs)
                     scores = [mapped[str(index)] for index in range(len(corpus))]
-                    integration = f"local {LOCAL_EMBEDDING_MODEL} embeddings; no external AI call"
+                integration = f"local {LOCAL_EMBEDDING_MODEL} embeddings; no external AI call"
             except LocalEmbeddingUnavailable:
                 # The optional package/model may be absent in small deployments.
                 # Continue with the explainable deterministic matcher rather than failing.

@@ -34,7 +34,7 @@ _job_vectors: OrderedDict[str, list[float]] = OrderedDict()
 _cache_lock = Lock()
 _ROLE_WORDS = {"software", "engineer", "engineering", "developer", "data", "scientist", "science", "analyst", "analytics", "platform", "qa", "machine", "learning", "ai", "ml", "backend", "frontend", "full", "stack", "cloud", "devops", "security", "product", "manager", "architect", "research", "intern", "senior", "junior"}
 _ACTION_WORDS = {"built", "developed", "deployed", "tested", "evaluated", "analyzed", "automated", "designed", "implemented", "maintained"}
-LOCAL_EMBEDDING_MODEL = "all-MiniLM-L6-v2"
+LOCAL_EMBEDDING_MODEL = "local-hash-v1"
 _local_model = None
 _local_model_lock = Lock()
 
@@ -179,17 +179,33 @@ def local_semantic_scores(profile: dict, jobs: list[dict]) -> dict[str, float]:
     query_text = json.dumps(safe_profile(profile), sort_keys=True, ensure_ascii=False)
     if any(len(text) > MAX_EMBEDDING_TEXT for text in [query_text, *documents]):
         raise ProviderError("Embedding input exceeds the supported limit.", 422)
-    try:
-        vectors = _local_encoder().encode([query_text, *documents], normalize_embeddings=True)
-        query, values = vectors[0], vectors[1:]
-        if len(values) != len(jobs):
-            raise ValueError()
-        return {str(job["job_id"]): max(0.0, min(1.0, float(sum(a * b for a, b in zip(query, vector)))))
-                for job, vector in zip(jobs, values)}
-    except LocalEmbeddingUnavailable:
-        raise
-    except Exception as error:
-        raise LocalEmbeddingUnavailable() from error
+    # Render's free tier cannot reliably download/load a transformer during a
+    # request. Use a deterministic local vectorizer by default; MiniLM remains
+    # opt-in for deployments that preinstall/cache it via JOBMATCH_LOCAL_EMBEDDING_MODEL.
+    model_name = os.getenv("JOBMATCH_LOCAL_EMBEDDING_MODEL", "").strip()
+    if model_name and model_name.casefold() not in {"local-hash-v1", "disabled"}:
+        try:
+            vectors = _local_encoder().encode([query_text, *documents], normalize_embeddings=True)
+            query, values = vectors[0], vectors[1:]
+            if len(values) != len(jobs):
+                raise ValueError()
+            return {str(job["job_id"]): max(0.0, min(1.0, float(sum(a * b for a, b in zip(query, vector)))))
+                    for job, vector in zip(jobs, values)}
+        except LocalEmbeddingUnavailable:
+            raise
+        except Exception as error:
+            raise LocalEmbeddingUnavailable() from error
+    def vector(text: str) -> list[float]:
+        values = [0.0] * 256
+        for token in re.findall(r"[a-z0-9][a-z0-9+#.-]{1,}", text.casefold()):
+            digest = sha256(token.encode()).digest()
+            index = int.from_bytes(digest[:2], "big") % len(values)
+            values[index] += 1.0 if digest[2] & 1 else -1.0
+        norm = math.hypot(*values) or 1.0
+        return [value / norm for value in values]
+    query, values = vector(query_text), [vector(text) for text in documents]
+    return {str(job["job_id"]): max(0.0, min(1.0, float(sum(a * b for a, b in zip(query, value)))))
+            for job, value in zip(jobs, values)}
 
 
 def deterministic_suggestions(profile: dict, matched_jobs: list[dict], *, target_role: str = "") -> dict:

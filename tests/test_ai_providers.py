@@ -66,12 +66,13 @@ def test_embeddings_http_success_private_query_not_cached_and_contacts_removed(m
     assert len(ai._job_vectors) == 1
 
 
-def test_local_minilm_scores_are_lazy_and_never_use_provider(monkeypatch):
+def test_optional_local_model_scores_are_never_hosted(monkeypatch):
     class Encoder:
         def encode(self, texts, normalize_embeddings):
             assert normalize_embeddings is True
             return [[1.0, 0.0], [1.0, 0.0], [0.0, 1.0]][:len(texts)]
 
+    monkeypatch.setenv("JOBMATCH_LOCAL_EMBEDDING_MODEL", "test-model")
     monkeypatch.setattr(ai, "_local_encoder", lambda: Encoder())
     result = ai.local_semantic_scores({"skills": ["Python"]}, [
         {"job_id": "a", "title": "Python Engineer"}, {"job_id": "b", "title": "SQL Analyst"}])

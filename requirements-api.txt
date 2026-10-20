@@ -9,5 +9,3 @@ PyJWT[crypto]>=2.8,<3
 python-multipart>=0.0.20,<1
 pypdf>=6,<7
 python-docx>=1.2,<2
-# Optional at runtime: local MiniLM is lazy-loaded and falls back safely when unavailable.
-sentence-transformers>=3,<6
