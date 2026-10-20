@@ -3,12 +3,12 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="description" content="Clear, practical AI job market intelligence for roles, skills, salaries and cities across India." />
+    <meta name="description" content="Find Bengaluru tech jobs, match your resume with explainable scores, and discover skills to develop. Explore India job-market insights." />
     <meta name="theme-color" content="#6558f5" />
-    <meta property="og:title" content="BizChat · AI job market intelligence" />
-    <meta property="og:description" content="Explore live and illustrative AI job market signals across India." />
+    <meta property="og:title" content="JobMatch Bengaluru · BizChat" />
+    <meta property="og:description" content="Bengaluru tech jobs, explainable resume matching, skill gaps and optional AI suggestions." />
     <meta property="og:type" content="website" />
-    <title>BizChat · AI job market intelligence</title>
+    <title>JobMatch Bengaluru · BizChat</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
@@ -24,19 +24,20 @@
       </aside>
       <main class="content">
         <header>
-          <div><p class="eyebrow">AI JOB MARKET / INDIA</p><h1 id="page-title">The market, made clear.</h1><p class="subhead">Signals from <span id="role-count">0</span> roles, updated daily.</p></div>
+          <div><p class="eyebrow">BENGALURU JOBS / INDIA INSIGHTS</p><h1 id="page-title">Bengaluru Tech Jobs</h1><p class="subhead">Signals from <span id="role-count">0</span> roles, updated daily.</p></div>
           <div class="header-actions"><button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle dark mode">☾</button><span class="api-pill"><span class="live-dot"></span><span id="data-status">Loading…</span></span><button class="avatar" id="avatar" aria-label="Open account">AM</button></div>
         </header>
         <div id="data-banner" class="data-banner" role="status">Preparing the latest market snapshot…</div>
         <div id="error-banner" class="error-banner" hidden role="alert"><span id="error-message">We couldn't load live data.</span><button id="retry-load" type="button">Retry</button></div>
-        <div class="toolbar"><div class="filters"><label>LOCATION<select id="city-filter"><option>All cities</option></select></label><label>SOURCE<select id="source-filter"><option>All sources</option></select></label><label>ROLE TYPE<select id="role-filter"><option>All role types</option></select></label><label>EXPERIENCE<select id="experience-filter"><option>All experience</option><option value="junior">0–2 years</option><option value="mid">3–6 years</option><option value="senior">7+ years</option></select></label><label>REMOTE<select id="remote-filter"><option>All remote types</option><option>Remote</option><option>Hybrid</option><option>On-site</option></select></label><label>SKILL<input id="skill-filter" type="search" placeholder="e.g. Python" /></label><label>MIN SALARY<input id="salary-min" type="number" min="0" placeholder="₹ min LPA" /></label><label>MAX SALARY<input id="salary-max" type="number" min="0" placeholder="₹ max LPA" /></label><button id="clear-filters" class="secondary" type="button">Clear filters</button></div><span class="date-chip">◷ &nbsp;Updated daily</span></div>
+        <div class="toolbar"><div class="filters"><label>LOCATION<select id="city-filter"><option>All cities</option></select></label><label>SOURCE<select id="source-filter"><option>All sources</option></select></label><label>SENIORITY (TITLE)<select id="role-filter"><option>All role types</option></select></label><label>MIN. EXPERIENCE<select id="experience-filter"><option>All experience</option><option value="junior">0–2 years</option><option value="mid">3–6 years</option><option value="senior">7+ years</option><option value="unknown">Not specified</option></select></label><label>WORK MODE<select id="remote-filter"><option>All remote types</option><option>Remote</option><option>Hybrid</option><option>On-site</option><option>Unknown</option></select></label><label>SKILL<input id="skill-filter" type="search" placeholder="e.g. Python" /></label><label>MIN SALARY<input id="salary-min" type="number" min="0" placeholder="₹ min LPA" /></label><label>MAX SALARY<input id="salary-max" type="number" min="0" placeholder="₹ max LPA" /></label><button id="clear-filters" class="secondary" type="button">Clear filters</button></div><span class="date-chip">◷ &nbsp;Updated daily</span></div>
         <section class="kpis" id="kpis" aria-label="Market metrics"></section>
         <div id="view-root"></div>
-        <section class="about panel"><h2>About this data</h2><p>We collect public job-market signals from authorized provider APIs and normalize titles, locations, skills and salary ranges for comparison. When the API is unavailable, this dashboard uses clearly labelled illustrative sample data so you can still explore the interface. Salary figures are employer-provided INR LPA values when available; predicted provider estimates are excluded from salary analytics.</p><p>Live listings currently come from <a href="https://developers.greenhouse.io/job-board.html" target="_blank" rel="noopener noreferrer">Greenhouse public job boards</a> and are filtered to India-relevant locations. Listings remain subject to each provider's attribution and usage terms.</p></section><footer><span>BizChat 2.0</span><span>Built for clearer career decisions · Verify details with the source</span></footer>
+        <section class="about panel"><h2>About this data</h2><p>We collect public job-market signals from documented provider APIs and normalize titles, locations, skills and salary ranges for comparison. When the analytics API is unavailable, the original dashboard uses clearly labelled illustrative sample data; the Bengaluru matcher reports unavailable listings instead of inventing jobs. Salary figures are employer-provided INR LPA values when available; predicted provider estimates are excluded from salary analytics.</p><p>Configured company career boards use <a href="https://developers.greenhouse.io/job-board.html" target="_blank" rel="noopener noreferrer">Greenhouse</a>, <a href="https://github.com/lever/postings-api" target="_blank" rel="noopener noreferrer">Lever</a>, and <a href="https://developers.ashbyhq.com/docs/public-job-posting-api" target="_blank" rel="noopener noreferrer">Ashby</a>. Bengaluru Jobs includes only explicit Bengaluru locations and classified tech roles. Coverage is not exhaustive. Missing posting dates remain unknown. Verify current availability and apply on the original company listing; source terms still apply.</p></section><footer><span>BizChat 2.0</span><span>Built for clearer career decisions · Verify details with the source</span></footer>
       </main>
     </div>
     <div id="account-modal" class="account-modal" hidden role="dialog" aria-modal="true" aria-labelledby="account-title"><div class="account-card"><button class="modal-close" id="account-close" aria-label="Close account dialog">×</button><h2 id="account-title">Your account</h2><p id="auth-status" class="form-status" role="status"></p><form id="auth-form"><label for="auth-email">Email address</label><input id="auth-email" type="email" autocomplete="email" required placeholder="you@example.com"><button class="primary" type="submit" id="auth-submit">Send magic link</button></form><button class="secondary" id="sign-out" hidden>Sign out</button><div id="saved-workspace" class="saved-workspace"></div></div></div>
     <script src="config.js"></script>
     <script src="app.js"></script>
+    <script src="jobmatch.js"></script>
   </body>
 </html>

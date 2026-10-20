@@ -18,16 +18,34 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from pydantic import BaseModel, Field
 
-from bizchat.analytics import prepare_jobs, recommendations, skill_demand, top_cities, roles_over_time, salary_distribution_by_role
+from bizchat.analytics import prepare_jobs, recommendations, skill_demand, top_cities, roles_over_time, salary_distribution_by_role, explode_cities
+from bizchat.locations import city_tags, matches_city
 from collector.validate import validation_report
 from database.repository import DatabaseRepository, get_repository
 from api.auth import admin_user, current_user
 from api.serialization import json_safe
+from api.jobmatch import create_jobmatch_router
+from api.body_limits import ResumeBodyLimitMiddleware
 from bizchat.advanced import alert_preview, resume_match, semantic_search, trend_forecast
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DATA_PATH = Path(os.getenv("BIZCHAT_DATA_PATH", str(ROOT / "data" / "raw" / "jobs.csv")))
+
+
+def resolve_data_path(configured: str | None) -> Path:
+    """Migrate the former production snapshot name, preserving custom datasets.
+
+    Existing Render services may retain the old environment variable until their
+    Blueprint is synced. That retired production name now aliases the daily
+    multi-source snapshot; arbitrary operator-supplied paths remain unchanged.
+    """
+    path = Path(configured) if configured else ROOT / "data" / "raw" / "jobs.csv"
+    current = ROOT / "data" / "raw" / "jobs-india.csv"
+    legacy = ROOT / "data" / "raw" / "jobs-greenhouse-india.csv"
+    return current if path.resolve() == legacy.resolve() and current.exists() else path
+
+
+DATA_PATH = resolve_data_path(os.getenv("BIZCHAT_DATA_PATH"))
 
 
 class Overview(BaseModel):
@@ -76,6 +94,7 @@ class JobListing(BaseModel):
     title: str
     company: str
     location: str
+    cities: list[str] = Field(default_factory=list)
     salary_min_lpa: float | None
     salary_max_lpa: float | None
     salary_mid_lpa: float | None
@@ -189,6 +208,10 @@ class RequestGuardMiddleware(BaseHTTPMiddleware):
         "/api/chat/query",
         "/api/chat",
         "/api/alerts/preview",
+        "/api/resume/parse",
+        "/api/resume/upload",
+        "/api/resume/match",
+        "/api/resume/suggestions",
     }
     _requests: dict[tuple[str, str], deque[float]] = defaultdict(deque)
 
@@ -196,9 +219,12 @@ class RequestGuardMiddleware(BaseHTTPMiddleware):
         if request.method == "OPTIONS":
             return await call_next(request)
         content_length = request.headers.get("content-length")
+        body_limit = 5 * 1024 * 1024 + 64 * 1024 if request.url.path == "/api/resume/upload" else self.MAX_BODY_BYTES
         if content_length:
             try:
-                if int(content_length) > self.MAX_BODY_BYTES:
+                if int(content_length) < 0:
+                    raise ValueError()
+                if int(content_length) > body_limit:
                     return JSONResponse(status_code=413, content={"detail": "Request body is too large"})
             except ValueError:
                 return JSONResponse(status_code=400, content={"detail": "Invalid Content-Length"})
@@ -224,6 +250,7 @@ class RequestGuardMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
+app.add_middleware(ResumeBodyLimitMiddleware)
 app.add_middleware(RequestGuardMiddleware)
 app.add_middleware(
     CORSMiddleware,
@@ -247,6 +274,9 @@ def load_jobs() -> pd.DataFrame:
     return _load_jobs(str(DATA_PATH), stat.st_mtime_ns, stat.st_size)
 
 
+app.include_router(create_jobmatch_router(load_jobs))
+
+
 def repository() -> DatabaseRepository:
     return get_repository()
 
@@ -266,8 +296,10 @@ def filtered_jobs(
     if start_date and end_date and start_date > end_date:
         raise HTTPException(status_code=422, detail="start_date must be on or before end_date")
     jobs = load_jobs()
+    if "cities" not in jobs:
+        jobs = jobs.assign(cities=jobs["location"].map(city_tags))
     if city:
-        jobs = jobs[jobs["location"] == city]
+        jobs = jobs[jobs.apply(lambda row: matches_city(row["location"], city, row["cities"]), axis=1).astype(bool)]
     if source:
         jobs = jobs[jobs["source"] == source]
     if start_date:
@@ -289,7 +321,7 @@ def filtered_jobs(
     return jobs.copy()
 
 
-FilterCity = Annotated[str | None, Query(description="Exact city filter")]
+FilterCity = Annotated[str | None, Query(description="Canonical city membership (aliases accepted); exact match for unknown locations")]
 FilterSource = Annotated[str | None, Query(description="Exact source filter")]
 FilterStart = Annotated[date | None, Query(description="Earliest posted date")]
 FilterEnd = Annotated[date | None, Query(description="Latest posted date")]
@@ -342,8 +374,9 @@ def _validation_report(data_path: str, modified_ns: int, file_size: int):
 @app.get("/api/overview", response_model=Overview)
 def overview(jobs: pd.DataFrame = Depends(filtered_jobs_dependency)) -> Overview:
     demand = skill_demand(jobs)
-    city_counts = jobs["location"].value_counts()
-    median = jobs["salary_mid_lpa"].median() if not jobs.empty else None
+    city_counts = top_cities(jobs).set_index("location")["jobs"]
+    disclosed_salaries = jobs["salary_mid_lpa"].dropna()
+    median = disclosed_salaries.median() if not disclosed_salaries.empty else None
     return Overview(
         jobs_tracked=len(jobs),
         median_salary_lpa=None if pd.isna(median) else float(median),
@@ -351,7 +384,7 @@ def overview(jobs: pd.DataFrame = Depends(filtered_jobs_dependency)) -> Overview
         top_skill_jobs=0 if demand.empty else int(demand.iloc[0]["jobs"]),
         leading_city=None if city_counts.empty else str(city_counts.index[0]),
         leading_city_jobs=0 if city_counts.empty else int(city_counts.iloc[0]),
-        cities=int(jobs["location"].nunique()),
+        cities=len(city_counts),
         companies=int(jobs["company"].nunique()),
         sources=int(jobs["source"].nunique()),
         posted_from=None if jobs["posted_date"].dropna().empty else jobs["posted_date"].min().date(),
@@ -373,8 +406,9 @@ def skills(jobs: pd.DataFrame = Depends(filtered_jobs_dependency)) -> list[Skill
 
 @app.get("/api/locations", response_model=list[LocationSummary])
 def locations(jobs: pd.DataFrame = Depends(filtered_jobs_dependency)) -> list[LocationSummary]:
+    """Count each job once per city; multi-city jobs appear in each city group."""
     result = []
-    for location, group in jobs.groupby("location", sort=False):
+    for location, group in explode_cities(jobs).groupby("location", sort=False):
         median = group["salary_mid_lpa"].median()
         result.append(LocationSummary(location=str(location), jobs=len(group), median_salary_lpa=None if pd.isna(median) else float(median)))
     return sorted(result, key=lambda item: (-item.jobs, item.location))
@@ -382,8 +416,9 @@ def locations(jobs: pd.DataFrame = Depends(filtered_jobs_dependency)) -> list[Lo
 
 @app.get("/api/salaries", response_model=SalariesResponse)
 def salaries(jobs: pd.DataFrame = Depends(filtered_jobs_dependency)) -> SalariesResponse:
+    """Include multi-city jobs in each city's salary sample, once per city."""
     by_location = []
-    for location, group in jobs.groupby("location", sort=False):
+    for location, group in explode_cities(jobs).groupby("location", sort=False):
         median = group["salary_mid_lpa"].median()
         by_location.append(SalarySummary(location=str(location), median_salary_lpa=None if pd.isna(median) else float(median)))
     exploded = jobs.explode("skills")

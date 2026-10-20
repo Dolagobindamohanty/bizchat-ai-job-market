@@ -1,0 +1,17 @@
+{
+  "boards": [
+    {"source": "greenhouse", "company": "Coinbase", "board_token": "coinbase"},
+    {"source": "greenhouse", "company": "Stripe", "board_token": "stripe"},
+    {"source": "greenhouse", "company": "Databricks", "board_token": "databricks"},
+    {"source": "greenhouse", "company": "Scale AI", "board_token": "scaleai"},
+    {"source": "greenhouse", "company": "Airbnb", "board_token": "airbnb"},
+    {"source": "greenhouse", "company": "Groww", "board_token": "groww"},
+    {"source": "lever", "company": "Meesho", "board_token": "meesho"},
+    {"source": "ashby", "company": "Sarvam AI", "board_token": "sarvam"},
+    {"source": "ashby", "company": "Composio", "board_token": "composio"}
+  ],
+  "location_keywords": [
+    "india", "bengaluru", "bangalore", "blr", "mumbai", "pune", "hyderabad",
+    "delhi", "gurugram", "gurgaon", "noida", "chennai"
+  ]
+}

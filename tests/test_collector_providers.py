@@ -136,6 +136,17 @@ def test_greenhouse_filters_locations_and_reports_board_error():
     assert "Broken" in errors[0] and "timed out" in errors[0]
 
 
+def test_legacy_greenhouse_does_not_confuse_india_with_indiana():
+    payload = {"jobs": [
+        {"id": "us", "title": "Software Engineer", "location": {"name": "Chicago, Illinois; Indiana"}},
+        {"id": "in", "title": "Software Engineer", "location": {"name": "Bengaluru, India"}},
+    ]}
+    rows = fetch_greenhouse(config={"boards": [{"board_token": "test", "company": "Demo"}],
+                                    "india_location_keywords": ["india"]},
+                            http_get=lambda url, params: payload)
+    assert [row["source_job_id"] for row in rows] == ["in"]
+
+
 def test_greenhouse_rejects_malformed_response():
     errors = []
     assert fetch_greenhouse(config={"boards": [{"board_token": "acme"}]},

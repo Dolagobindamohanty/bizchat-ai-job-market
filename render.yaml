@@ -9,4 +9,14 @@ services:
       - key: PYTHON_VERSION
         value: 3.11.9
       - key: BIZCHAT_DATA_PATH
-        value: data/raw/jobs-greenhouse-india.csv
+        value: data/raw/jobs-india.csv
+      - key: JOBMATCH_PROVIDER
+        value: openai
+      - key: JOBMATCH_EMBEDDING_MODEL
+        value: text-embedding-3-small
+      - key: JOBMATCH_LLM_MODEL
+        value: gpt-4.1-mini
+      - key: JOBMATCH_AI_DAILY_CALL_LIMIT
+        value: "100"
+      - key: OPENAI_API_KEY
+        sync: false

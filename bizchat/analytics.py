@@ -5,6 +5,8 @@ from collections.abc import Iterable
 
 import pandas as pd
 
+from bizchat.locations import city_tags, matches_city
+
 
 SKILL_ALIASES: dict[str, tuple[str, ...]] = {
     "Python": ("python",),
@@ -59,6 +61,7 @@ def prepare_jobs(df: pd.DataFrame) -> pd.DataFrame:
     result["skill_count"] = result["skills"].str.len()
     result["role_type"] = result["title"].fillna("").map(role_type)
     result["experience_level"] = result["experience_min"].map(experience_level)
+    result["cities"] = result["location"].map(city_tags)
     return result
 
 
@@ -89,8 +92,25 @@ def explode_skills(jobs: pd.DataFrame) -> pd.DataFrame:
     return jobs[["job_id", "location", "salary_mid_lpa", "posted_date", "skills"]].explode("skills").rename(columns={"skills": "skill"}).dropna(subset=["skill"])
 
 
+def explode_cities(jobs: pd.DataFrame) -> pd.DataFrame:
+    """One row per job/canonical city, with raw fallback for unrecognized places.
+
+    A multi-city job contributes once to each city, so city counts may sum to
+    more than the job total. Country-only and unknown labels remain distinct.
+    The returned location is an analytics label; source rows are never changed.
+    """
+    result = jobs.copy()
+    tags = result["cities"] if "cities" in result else result["location"].map(city_tags)
+    result["location"] = [
+        list(dict.fromkeys(cities)) if isinstance(cities, list) and cities else [location]
+        for cities, location in zip(tags, result["location"])
+    ]
+    return result.explode("location")
+
+
 def top_cities(jobs: pd.DataFrame) -> pd.DataFrame:
-    return jobs.groupby("location", dropna=False).size().reset_index(name="jobs").sort_values(["jobs", "location"], ascending=[False, True])
+    """Count jobs once per city; multi-city jobs count in every listed city."""
+    return explode_cities(jobs).groupby("location", dropna=False).size().reset_index(name="jobs").sort_values(["jobs", "location"], ascending=[False, True])
 
 
 def roles_over_time(jobs: pd.DataFrame, frequency: str = "month") -> pd.DataFrame:
@@ -123,7 +143,7 @@ def recommendations(
     scoped = jobs.copy()
     normalized_city = target_city.strip() if isinstance(target_city, str) else target_city
     if normalized_city and normalized_city.casefold() != "all cities":
-        scoped = scoped[scoped["location"].astype(str).str.casefold() == normalized_city.casefold()].copy()
+        scoped = scoped[scoped.apply(lambda row: matches_city(row["location"], normalized_city, row.get("cities")), axis=1).astype(bool)].copy()
 
     if target_role:
         role_terms = [term for term in re.findall(r"[a-z0-9]+", target_role.casefold()) if len(term) > 1]

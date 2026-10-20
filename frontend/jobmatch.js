@@ -1,0 +1,162 @@
+/* Session-only resume workspace, layered over the original dashboard. */
+(() => {
+  'use strict';
+  const views = [['Bengaluru Jobs','⌖'],['Upload Resume','↑'],['My Matches','◎'],['Role Fit','◇'],['Skill Gaps','✦'],['Resume Suggestions','↗']];
+  NAV.unshift(...views);
+  const state = {text:'',file:null,profile:null,matches:null,suggestions:null,target:'',embeddings:false,lastMatchEmbeddings:false,matchConsent:false,suggestionConsent:false,busy:'',error:'',notice:'',query:'',source:'',company:'',role:'',skillQuery:'',matchSource:'',scope:'bengaluru',page:1,catalog:null,catalogBusy:false,catalogError:''};
+  let generation = 0, catalogRequest = 0, paintedView = '';
+  const e = escapeHTML, arr = value => Array.isArray(value) ? value : [], words = value => arr(value).join(', ');
+  const split = value => value.split(',').map(x => x.trim()).filter(Boolean);
+  const button = (action,label,primary=false,disabled=false) => `<button type="button" class="${primary?'primary':'secondary'}" data-jm-action="${action}" ${disabled?'disabled':''}>${label}</button>`;
+  const empty = message => `<p class="empty">${e(message)}</p>`;
+  const safeURL = value => { try { const url = new URL(value); return url.protocol === 'https:' ? url.href : ''; } catch (_) { return ''; } };
+  const score = value => Number.isFinite(Number(value)) ? `${Number(value).toFixed(1)} / 100` : 'Not scored';
+  const profileReady = () => state.profile && typeof state.profile === 'object';
+  const sourceOptions = selected => ['','greenhouse','lever','ashby'].map(source => `<option value="${source}" ${source===selected?'selected':''}>${source?e(source[0].toUpperCase()+source.slice(1)):'All sources'}</option>`).join('');
+  function structured(value) {
+    if (value === null || value === undefined) return '';
+    if (Array.isArray(value)) return `<ul>${value.map(item => `<li>${structured(item)}</li>`).join('')}</ul>`;
+    if (typeof value === 'object') return `<dl>${Object.entries(value).map(([key,item]) => `<dt>${e(key.replace(/_/g,' '))}</dt><dd>${structured(item)}</dd>`).join('')}</dl>`;
+    return e(value);
+  }
+  function cards(items,matched=false) {
+    return arr(items).map(job => {
+      const url = safeURL(job.source_url || job.sourceUrl || job.url);
+      return `<article class="jm-job"><div class="jm-job-heading"><div><h3>${e(job.title || 'Untitled role')}</h3><p>${e(job.company || 'Company not listed')} · ${e(job.location || job.city || 'Location not listed')}</p></div>${matched?`<strong class="jm-score">${e(score(job.score))}</strong>`:''}</div><p>${e(job.source || 'Source not listed')} · ${e(job.posted_date || 'Posting date not supplied')} · ${e(job.remote_type || 'Work mode not supplied')}</p><p>${e(words(job.skills) || 'Skills not listed')}</p>${matched?`<p><b>Matched skills:</b> ${e(words(job.matched_skills) || 'None identified')}</p><p><b>Not identified in your profile:</b> ${e(words(job.missing_skills) || 'None identified')} — verify and correct your profile.</p><p>${e(job.reason || '')}</p><details><summary>Score breakdown</summary>${structured(job.breakdown || {})}</details>`:''}${url?`<a href="${e(url)}" target="_blank" rel="noopener noreferrer">View source listing ↗</a>`:'<span class="form-status">No secure source link available</span>'}</article>`;
+    }).join('');
+  }
+  function profileEditor() {
+    if (!profileReady()) return empty('No parsed resume yet. Paste text or upload a file, then parse it to review your profile.');
+    const p = state.profile;
+    return `<section class="panel"><h2>Review your extracted profile</h2><p class="panel-help">Extraction can miss details. Correct skills, titles and experience manually before matching. A skill not identified here does not mean you lack it.</p><fieldset ${state.busy?'disabled':''}><div class="jm-fields"><label>Skills (comma-separated)<textarea data-jm-field="skills">${e(words(p.skills))}</textarea></label><label>Titles (comma-separated)<textarea data-jm-field="titles">${e(words(p.titles))}</textarea></label><label>Years of experience<input data-jm-field="years_experience" type="number" min="0" max="80" step="0.5" value="${e(p.years_experience ?? '')}"></label></div></fieldset><details><summary>Extracted education, projects and redacted text</summary>${structured({education:p.education,projects:p.projects,redacted_text:p.redacted_text})}</details><div class="jm-actions">${button('nav-matches','Continue to My Matches',true)}</div></section>`;
+  }
+  function uploadView() {
+    return `<section class="panel"><h2>Upload or paste your resume</h2><p class="panel-help">PDF or DOCX, up to 5 MiB. You can also paste plain text. Parsing does not call an external AI provider.</p><fieldset ${state.busy?'disabled':''}><label for="jm-text">Resume text</label><textarea id="jm-text" data-jm-input="text" rows="9" placeholder="Paste your resume text here…">${e(state.text)}</textarea><div class="jm-actions">${button('parse-text','Parse pasted text',true,!state.text.trim() || !!state.busy)}</div><label for="jm-file">Or choose a PDF / DOCX file</label><input id="jm-file" type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"><p id="jm-file-label" class="form-status">${e(state.file?.name || 'No file selected')}</p>${button('parse-file','Parse selected file',true,!state.file || !!state.busy)}</fieldset></section>${profileEditor()}`;
+  }
+  function matchControls() {
+    return `<section class="panel"><h2>Compare your profile with current jobs</h2><p class="panel-help">Baseline matching uses your reviewed profile across all configured sources, unless you select one below. Scores indicate relative fit, not hiring probability. Unknown skills are not proof of a gap.</p>${profileReady()?`<p>${e(words(state.profile.skills) || 'No skills identified — review your profile first.')}</p><fieldset ${state.busy?'disabled':''}><label>Match job source<select data-jm-input="matchSource">${sourceOptions(state.matchSource)}</select></label><label class="jm-check"><input type="checkbox" data-jm-input="embeddings" ${state.embeddings?'checked':''}> Use external embeddings to enhance baseline matching</label><label class="jm-check"><input type="checkbox" data-jm-input="matchConsent" ${state.matchConsent?'checked':''}> I consent to sending my reviewed, best-effort redacted profile to the configured external AI provider for this match request.</label>${button('match','Find my matches',true,!!state.busy)}</fieldset>`:`${empty('No parsed resume yet. Parse and review a resume to find matches.')}${button('nav-upload','Upload Resume',true)}`}</section>`;
+  }
+  function resultsView() {
+    const result = state.matches;
+    if (view === 'My Matches') return `${matchControls()}${result?`<section class="panel"><h2>${e(result.total ?? arr(result.items).length)} matching roles</h2><p class="panel-help">${e(state.lastMatchEmbeddings?'Requested embedding-enhanced matching.':'Baseline matching.')} ${e(typeof result.integration === 'string'?result.integration:'')}</p>${cards(result.items,true) || empty('No matching jobs found. Review your profile or try again when more listings are available.')}</section>`:''}`;
+    if (!result) return `<section class="panel"><h2>${e(view)}</h2>${empty('No match results yet. Parse a resume, review the profile, and run My Matches first.')}${button('nav-matches','Go to My Matches',true)}</section>`;
+    if (view === 'Role Fit') return `<section class="panel"><h2>Role fit across matched jobs</h2><p class="panel-help">Comparative scores are not hiring probabilities.</p>${arr(result.roles).map(role=>`<article class="jm-job"><h3>${e(role.role)}</h3><p>${e(score(role.score))} · ${e(typeof role.jobs === 'number'?role.jobs:arr(role.jobs).length)} jobs</p></article>`).join('') || empty('No role-level fit data returned.')}</section>`;
+    return `<section class="panel"><h2>Skills to verify and develop</h2><p class="panel-help">These skills were requested in matched jobs but not identified in your reviewed profile. You may already know them; update your profile before treating them as learning needs.</p>${arr(result.gaps).map(gap=>`<article class="jm-job"><h3>${e(gap.skill)}</h3><p>${e(gap.count)} of ${e(gap.total)} relevant jobs</p><p>${e(gap.advice || 'Verify your experience with this skill, then consider targeted practice.')}</p></article>`).join('') || empty('No skill gaps identified in these results.')}</section>`;
+  }
+  function suggestionsView() {
+    return `<section class="panel"><h2>Resume suggestions · optional external AI</h2><p class="panel-help">Only runs when you request it and explicitly consent. Review every suggestion for accuracy; do not claim skills or achievements you cannot substantiate.</p>${profileReady()?`<fieldset ${state.busy?'disabled':''}><label for="jm-target">Target role (optional)</label><input id="jm-target" data-jm-input="target" value="${e(state.target)}" placeholder="e.g. Data Engineer"><label class="jm-check"><input type="checkbox" data-jm-input="suggestionConsent" ${state.suggestionConsent?'checked':''}> I consent to sending my reviewed, best-effort redacted profile and target role to the configured external AI provider for this suggestions request.</label>${button('suggest','Request suggestions',true,!!state.busy)}</fieldset>`:`${empty('No parsed resume yet. Upload and review a resume first.')}${button('nav-upload','Upload Resume',true)}`}${state.suggestions?`<div class="jm-suggestions">${structured(state.suggestions.suggestions ?? state.suggestions)}</div>`:''}</section>`;
+  }
+  function catalogView() {
+    const c = state.catalog;
+    const filters = `<label>Source<select data-jm-input="source">${sourceOptions(state.source)}</select></label><label>Company<input data-jm-input="company" maxlength="200" value="${e(state.company)}" placeholder="e.g. Meesho"></label><label>Role<input data-jm-input="role" maxlength="200" value="${e(state.role)}" placeholder="e.g. Data Science"></label><label>All these skills<input data-jm-input="skillQuery" maxlength="500" value="${e(state.skillQuery)}" placeholder="Python, SQL"></label>`;
+    return `<section class="panel"><h2>Bengaluru Tech Jobs</h2><p class="panel-help">Jobs from tracked Greenhouse, Lever and Ashby company boards in one feed. Upload your resume to discover matching jobs, suitable roles and skills to develop. Coverage is limited to configured companies, not every Bengaluru opening.</p><div class="jm-actions">${button('nav-upload','Upload resume →',true)}</div><form id="jm-search"><fieldset ${state.catalogBusy?'disabled':''}><div class="jm-search"><label for="jm-query">Search title, company or description<input id="jm-query" data-jm-input="query" type="search" maxlength="200" value="${e(state.query)}" placeholder="Python, engineer, company…"></label><label for="jm-scope">Job collection<select id="jm-scope"><option value="bengaluru" ${state.scope==='bengaluru'?'selected':''}>Bengaluru tech jobs</option><option value="ai" ${state.scope==='ai'?'selected':''}>Bengaluru AI jobs</option></select></label></div><div class="jm-fields">${filters}</div><div class="jm-actions"><button class="primary" type="submit">Search / apply filters</button>${button('reset-filters','Clear filters')}</div></fieldset></form><div role="status" aria-live="polite">${state.catalogBusy?'Loading current listings…':state.catalogError?e(state.catalogError):c?`${e(c.total ?? arr(c.items).length)} jobs · Page ${e(state.page)}`:'Ready to search.'}</div>${state.catalogBusy?'':cards(c?.items) || (!state.catalogError?empty('No jobs found for this search. Try a broader query.'):'')}<div class="jm-actions">${button('previous','Previous',false,state.catalogBusy || state.page<=1)}${button('next','Next',false,state.catalogBusy || !c || state.page*Number(c.page_size || 20)>=Number(c.total || 0))}${button('catalog-refresh','Refresh listings',false,state.catalogBusy)}</div></section>`;
+  }
+  function paint() {
+    if (!views.some(([name])=>name===view)) return;
+    paintedView = view;
+    $('page-title').textContent = view;
+    $('role-count').textContent = state.catalog ? String(state.catalog.total ?? arr(state.catalog.items).length) : '—';
+    $('view-root').innerHTML = `<div class="jobmatch"><div class="jm-session"><p>Resume data stays in this browser tab's memory, with transient server processing. External providers are used only with your explicit opt-in. Contact redaction is best effort; review extracted text before opting in.</p>${button('clear','Clear / delete session')}</div><p class="jm-status" role="status" aria-live="polite">${e(state.busy ? `${state.busy}…` : state.notice)}</p>${state.error?`<p class="jm-error" role="alert">${e(state.error)}</p>`:''}${view==='Bengaluru Jobs'?catalogView():view==='Upload Resume'?uploadView():view==='Resume Suggestions'?suggestionsView():resultsView()}</div>`;
+    toggleNav();
+  }
+  async function request(path,options,external=false) {
+    const response = await fetchAPI(path,options);
+    if (!response.ok) {
+      let detail = ''; try { const body = await response.json(); detail = typeof body.detail === 'string' ? body.detail : ''; } catch (_) {}
+      throw Error(response.status===503 && external ? `External AI integration is unavailable (503). ${detail} Baseline matching remains available with embeddings disabled.` : `Request failed (${response.status}). ${detail || 'Please retry when the API is available.'}`);
+    }
+    return response.json();
+  }
+  const post = (path,body) => request(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)},body.use_embeddings===true || path==='/resume/suggestions');
+  async function loadCatalog() {
+    const id = ++catalogRequest, epoch = generation;
+    state.catalogBusy = true; state.catalogError = ''; paint();
+    try {
+      const data = await request(`/jobs/${state.scope}?${new URLSearchParams({q:state.query,source:state.source,company:state.company,role:state.role,skills:state.skillQuery,page:String(state.page),page_size:'20'})}`);
+      if (id !== catalogRequest || epoch !== generation) return;
+      state.catalog = data;
+    } catch (error) { if (id !== catalogRequest || epoch !== generation) return; state.catalog = null; state.catalogError = error.message || 'Listings are unavailable. Please retry.'; }
+    if (id === catalogRequest && epoch === generation) { state.catalogBusy = false; paint(); }
+  }
+  async function run(kind) {
+    if (state.busy) return;
+    state.error = ''; state.notice = '';
+    if (kind==='parse-text' && !state.text.trim()) { state.error='Paste resume text first.'; paint(); return; }
+    if (kind==='parse-file' && !state.file) { state.error='Choose a PDF or DOCX first.'; paint(); return; }
+    if ((kind==='match' || kind==='suggest') && !profileReady()) { state.error='Parse and review a resume first.'; paint(); return; }
+    if (kind==='match' && state.embeddings && !state.matchConsent) { state.error='External embeddings require explicit consent. Disable embeddings to use baseline matching.'; paint(); return; }
+    if (kind==='suggest' && !state.suggestionConsent) { state.error='Explicit consent is required before requesting external AI suggestions.'; paint(); return; }
+    const epoch = generation;
+    if (kind==='match') state.matches=null;
+    if (kind==='suggest') state.suggestions=null;
+    state.busy = kind.startsWith('parse')?'Parsing resume':kind==='match'?'Matching profile':'Requesting suggestions';
+    let promise;
+    if (kind==='parse-text') promise = post('/resume/parse',{resume_text:state.text});
+    if (kind==='parse-file') { const form = new FormData(); form.append('file',state.file); promise = request('/resume/upload',{method:'POST',body:form}); }
+    if (kind==='match') { state.lastMatchEmbeddings=state.embeddings; promise = post('/resume/match',{profile:state.profile,source:state.matchSource,use_embeddings:state.embeddings,consent_external:state.embeddings && state.matchConsent,limit:50}); }
+    if (kind==='suggest') promise = post('/resume/suggestions',{profile:state.profile,consent_external:true,target_role:state.target});
+    state.matchConsent = false; state.suggestionConsent = false; paint();
+    try {
+      const result = await promise;
+      if (epoch !== generation) return;
+      if (kind.startsWith('parse')) {
+        if (!result.profile || typeof result.profile !== 'object' || Array.isArray(result.profile)) throw Error('The parser returned no usable profile. Try pasting plain text.');
+        state.profile = result.profile; state.matches = null; state.suggestions = null; state.notice='Resume parsed. Review and correct your extracted profile below.';
+      } else if (kind==='match') { state.matches=result; state.notice='Matching complete. Explore My Matches, Role Fit and Skill Gaps.'; }
+      else { state.suggestions=result; state.notice='Suggestions received. Verify them before editing your resume.'; }
+    } catch (error) { if (epoch !== generation) return; state.error=error.message || 'The service is unavailable. Please retry.'; }
+    finally { if (epoch === generation) { state.busy=''; paint(); } }
+  }
+  function clearSession() {
+    generation++; catalogRequest++;
+    Object.assign(state,{text:'',file:null,profile:null,matches:null,suggestions:null,target:'',embeddings:false,lastMatchEmbeddings:false,matchConsent:false,suggestionConsent:false,matchSource:'',busy:'',error:'',notice:'Session cleared. Resume, file, profile and results deleted from this tab.',catalogBusy:false});
+    paint();
+  }
+  const originalRender = render;
+  render = function() {
+    const matcher = views.some(([name])=>name===view);
+    document.body.classList.toggle('jobmatch-active',matcher);
+    if (!matcher) { paintedView=''; originalRender(); return; }
+    // Background dashboard loads must not replace an editor while the user types.
+    if (paintedView !== view) paint();
+  };
+  $('view-root').addEventListener('input',event => {
+    const target = event.target, key = target.dataset.jmInput, field = target.dataset.jmField;
+    if (key) {
+      state[key] = target.type==='checkbox' ? target.checked : target.value;
+      if (key==='matchSource') { state.matches=null; state.matchConsent=false; paint(); }
+      if (key==='text') {
+        const b = document.querySelector('[data-jm-action="parse-text"]'); if (b) b.disabled=!state.text.trim();
+      }
+    }
+    if (field && profileReady()) {
+      state.profile[field] = field==='years_experience' ? (target.value===''?null:Number(target.value)) : split(target.value);
+      state.matches=null; state.suggestions=null; state.matchConsent=false; state.suggestionConsent=false;
+    }
+  });
+  $('view-root').addEventListener('change',event => {
+    if (event.target.id==='jm-scope') { state.scope=event.target.value; state.page=1; state.catalog=null; loadCatalog(); }
+    if (event.target.id!=='jm-file') return;
+    const file = event.target.files?.[0]; state.file=null; state.error='';
+    if (file && (!/\.(pdf|docx)$/i.test(file.name) || file.size>5*1024*1024 || file.size===0)) state.error='Choose a non-empty PDF or DOCX file no larger than 5 MiB.';
+    else if (file) state.file=file;
+    paint();
+  });
+  $('view-root').addEventListener('submit',event => { if (event.target.id==='jm-search') { event.preventDefault(); state.page=1; loadCatalog(); } });
+  $('view-root').addEventListener('click',event => {
+    const control = event.target.closest('[data-jm-action]'); if (!control || control.disabled) return;
+    const action = control.dataset.jmAction;
+    if (action==='clear') clearSession();
+    else if (action==='nav-upload') setView('Upload Resume');
+    else if (action==='nav-matches') setView('My Matches');
+    else if (action==='previous' || action==='next') { state.page += action==='next'?1:-1; loadCatalog(); }
+    else if (action==='catalog-refresh') loadCatalog();
+    else if (action==='reset-filters') { Object.assign(state,{query:'',source:'',company:'',role:'',skillQuery:'',page:1}); loadCatalog(); }
+    else run(action);
+  });
+  // setup() has already registered the nav's delegated click listener.
+  // Replace only its children; keep that listener and preserve the five legacy views.
+  $('navigation').innerHTML = NAV.map(([name,icon])=>`<button type="button" data-view="${e(name)}"><i>${e(icon)}</i>${e(name)}</button>`).join('');
+  setView('Bengaluru Jobs');
+  loadCatalog();
+})();

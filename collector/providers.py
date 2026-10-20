@@ -156,7 +156,7 @@ def fetch_greenhouse(*, config: dict[str, Any], timeout: float = DEFAULT_TIMEOUT
                 if not isinstance(item, dict):
                     continue
                 location = _greenhouse_location(item)
-                if not location or not any(keyword in location.casefold() for keyword in keywords):
+                if not location or not any(not keyword or re.search(r"(?<!\w)" + re.escape(keyword) + r"(?!\w)", location.casefold()) for keyword in keywords):
                     continue
                 company_value = item.get("company")
                 company = company_value.get("name") if isinstance(company_value, dict) else board.get("company")
