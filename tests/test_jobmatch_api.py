@@ -60,9 +60,13 @@ def test_external_consent_and_unavailable(client, monkeypatch):
     for kind in ("EMBEDDING", "LLM"):
         for part in ("BASE_URL", "API_KEY", "MODEL"):
             monkeypatch.delenv(f"JOBMATCH_{kind}_{part}", raising=False)
-    assert client.post("/api/resume/match", json={"profile": {}, "use_embeddings": True}).status_code == 400
+    local = client.post("/api/resume/match", json={"profile": {}, "use_embeddings": True})
+    assert local.status_code == 200
+    assert "no external" in local.json()["integration"]
     assert client.post("/api/resume/match", json={"profile": {}, "use_embeddings": True, "consent_external": True}).status_code == 503
-    assert client.post("/api/resume/suggestions", json={"profile": {}}).status_code == 400
+    suggestions = client.post("/api/resume/suggestions", json={"profile": {}})
+    assert suggestions.status_code == 200
+    assert "no external" in suggestions.json()["integration"]
     assert client.post("/api/resume/suggestions", json={"profile": {}, "consent_external": True}).status_code == 503
 
 

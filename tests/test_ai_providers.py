@@ -10,6 +10,7 @@ from bizchat import ai_providers as ai
 @pytest.fixture(autouse=True)
 def clean_config(monkeypatch, tmp_path):
     ai._job_vectors.clear()
+    monkeypatch.setattr(ai, "_local_model", None)
     for name in ("JOBMATCH_PROVIDER", "OPENAI_API_KEY", "JOBMATCH_AI_DAILY_CALL_LIMIT"):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("JOBMATCH_USAGE_DB", str(tmp_path / "usage.sqlite3"))
@@ -63,6 +64,26 @@ def test_embeddings_http_success_private_query_not_cached_and_contacts_removed(m
     for pii in ("Jane", "jane", "9876543210", "private.example", "University", "TRUST ME"):
         assert pii not in outgoing
     assert len(ai._job_vectors) == 1
+
+
+def test_local_minilm_scores_are_lazy_and_never_use_provider(monkeypatch):
+    class Encoder:
+        def encode(self, texts, normalize_embeddings):
+            assert normalize_embeddings is True
+            return [[1.0, 0.0], [1.0, 0.0], [0.0, 1.0]][:len(texts)]
+
+    monkeypatch.setattr(ai, "_local_encoder", lambda: Encoder())
+    result = ai.local_semantic_scores({"skills": ["Python"]}, [
+        {"job_id": "a", "title": "Python Engineer"}, {"job_id": "b", "title": "SQL Analyst"}])
+    assert result == {"a": pytest.approx(1), "b": pytest.approx(0)}
+
+
+def test_deterministic_suggestions_are_grounded_without_credentials():
+    result = ai.deterministic_suggestions({"skills": ["Python"]}, [{"skills": ["Python", "SQL"]}])
+    assert result["integration"].startswith("local deterministic")
+    assert [item["skill"] for item in result["suggestions"]] == ["Python", "SQL"]
+    assert result["suggestions"][0]["action"] == "document"
+    assert result["suggestions"][1]["action"] == "learn"
 
 
 @pytest.mark.parametrize("body", [

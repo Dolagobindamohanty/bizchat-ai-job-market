@@ -34,12 +34,19 @@ _job_vectors: OrderedDict[str, list[float]] = OrderedDict()
 _cache_lock = Lock()
 _ROLE_WORDS = {"software", "engineer", "engineering", "developer", "data", "scientist", "science", "analyst", "analytics", "platform", "qa", "machine", "learning", "ai", "ml", "backend", "frontend", "full", "stack", "cloud", "devops", "security", "product", "manager", "architect", "research", "intern", "senior", "junior"}
 _ACTION_WORDS = {"built", "developed", "deployed", "tested", "evaluated", "analyzed", "automated", "designed", "implemented", "maintained"}
+LOCAL_EMBEDDING_MODEL = "all-MiniLM-L6-v2"
+_local_model = None
+_local_model_lock = Lock()
 
 
 class ProviderError(Exception):
     def __init__(self, message: str, status_code: int = 502):
         super().__init__(message)
         self.status_code = status_code
+
+
+class LocalEmbeddingUnavailable(Exception):
+    """The optional local model cannot be loaded in this deployment."""
 
 
 def _words(text: str, allowed: set[str]) -> list[str]:
@@ -136,6 +143,78 @@ def _embeddings(config: tuple[str, str, str], texts: list[str]) -> list[list[flo
         return ordered
     except (KeyError, TypeError, ValueError, OverflowError):
         raise ProviderError("Hosted AI provider returned invalid embeddings.") from None
+
+
+def _local_encoder():
+    """Load sentence-transformers only when local semantic matching is requested."""
+    global _local_model
+    if _local_model is not None:
+        return _local_model
+    with _local_model_lock:
+        if _local_model is not None:
+            return _local_model
+        try:
+            from sentence_transformers import SentenceTransformer
+            model_name = os.getenv("JOBMATCH_LOCAL_EMBEDDING_MODEL", LOCAL_EMBEDDING_MODEL).strip() or LOCAL_EMBEDDING_MODEL
+            _local_model = SentenceTransformer(model_name)
+        except Exception as error:
+            raise LocalEmbeddingUnavailable() from error
+    return _local_model
+
+
+def local_semantic_scores(profile: dict, jobs: list[dict]) -> dict[str, float]:
+    """Score public jobs with the optional local MiniLM model.
+
+    This path never requires credentials and sends no profile data over the
+    network. Import/model loading is lazy so API startup remains lightweight.
+    """
+    if len(jobs) > MAX_JOBS:
+        raise ProviderError("Embedding corpus exceeds the supported limit.", 422)
+    if any("job_id" not in job for job in jobs):
+        raise ProviderError("Embedding corpus contains invalid jobs.", 422)
+    documents = [json.dumps({"skills": extract_skills(" ".join(map(str, job.get("skills", [])))),
+                             "title": str(job.get("title", ""))[:300],
+                             "description": str(job.get("description") or "")[:6000]}, sort_keys=True, ensure_ascii=False)
+                 for job in jobs]
+    query_text = json.dumps(safe_profile(profile), sort_keys=True, ensure_ascii=False)
+    if any(len(text) > MAX_EMBEDDING_TEXT for text in [query_text, *documents]):
+        raise ProviderError("Embedding input exceeds the supported limit.", 422)
+    try:
+        vectors = _local_encoder().encode([query_text, *documents], normalize_embeddings=True)
+        query, values = vectors[0], vectors[1:]
+        if len(values) != len(jobs):
+            raise ValueError()
+        return {str(job["job_id"]): max(0.0, min(1.0, float(sum(a * b for a, b in zip(query, vector)))))
+                for job, vector in zip(jobs, values)}
+    except LocalEmbeddingUnavailable:
+        raise
+    except Exception as error:
+        raise LocalEmbeddingUnavailable() from error
+
+
+def deterministic_suggestions(profile: dict, matched_jobs: list[dict], *, target_role: str = "") -> dict:
+    """Grounded suggestions that require no model, credentials, or network."""
+    if len(matched_jobs) > MAX_JOBS:
+        raise ProviderError("Suggestion corpus exceeds the supported limit.", 422)
+    safe = safe_profile(profile)
+    current = set(safe["skills"])
+    counts = Counter()
+    for job in matched_jobs[:20]:
+        counts.update(set(extract_skills(" ".join(map(str, job.get("skills", []))))))
+    known = sorted(current & set(counts))
+    missing = sorted(set(counts) - current, key=lambda skill: (-counts[skill], skill))
+    suggestions = [{"skill": skill, "action": "document",
+                    "advice": f"If you have verifiable {skill} experience, describe your actual contribution and only metrics you can substantiate.",
+                    "jobs_requesting_skill": counts[skill],
+                    "bullet_template": f"[Describe your actual contribution] using {skill} to [actual task]; [verified outcome, if available]."}
+                   for skill in known[:4]]
+    suggestions.extend({"skill": skill, "action": "learn",
+                        "advice": f"If targeting these roles, consider learning {skill} through a project; add it to your resume only after you can demonstrate it.",
+                        "jobs_requesting_skill": counts[skill]}
+                       for skill in missing[:max(0, 8 - len(suggestions))])
+    return {"suggestions": suggestions, "matched_skills": known, "missing_skills": missing,
+            "jobs_considered": min(20, len(matched_jobs)),
+            "integration": "local deterministic fallback; no external AI call"}
 
 
 def semantic_scores(profile: dict, jobs: list[dict], *, consent: bool = False) -> dict[str, float]:

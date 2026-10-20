@@ -10,7 +10,9 @@ from starlette.concurrency import run_in_threadpool
 
 from api.models import ResumeMatchRequest, ResumeParseRequest, ResumeProfile, ResumeSuggestionsRequest
 from api.serialization import json_safe
-from bizchat.ai_providers import MAX_JOBS, ProviderError, generate_suggestions, semantic_scores
+from bizchat.ai_providers import (LOCAL_EMBEDDING_MODEL, MAX_JOBS, LocalEmbeddingUnavailable, ProviderError,
+                                   deterministic_suggestions, generate_suggestions,
+                                   local_semantic_scores, semantic_scores)
 from bizchat.job_classifier import classify_job, is_bengaluru
 from bizchat.matcher import match_jobs
 from bizchat.resume_parser import extract_resume_file, parse_resume
@@ -161,15 +163,24 @@ def create_jobmatch_router(load_jobs: Callable[[], pd.DataFrame]) -> APIRouter:
         if payload.use_embeddings:
             # Rank locally first to bound hosted cost on large public datasets.
             corpus = match_jobs(profile, corpus, limit=MAX_JOBS)["items"]
+            # ATS numeric IDs are not globally unique across company boards.
+            # Map vectors by this request's ordinal without changing public IDs.
+            embedding_jobs = [{**job, "job_id": str(index)} for index, job in enumerate(corpus)]
             try:
-                # ATS numeric IDs are not globally unique across company boards.
-                # Map vectors by this request's ordinal without changing public IDs.
-                embedding_jobs = [{**job, "job_id": str(index)} for index, job in enumerate(corpus)]
-                mapped = semantic_scores(profile, embedding_jobs, consent=payload.consent_external)
-                scores = [mapped[str(index)] for index in range(len(corpus))]
+                if payload.consent_external:
+                    mapped = semantic_scores(profile, embedding_jobs, consent=True)
+                    scores = [mapped[str(index)] for index in range(len(corpus))]
+                    integration = f"hosted OpenAI-compatible embeddings; consented, top {len(corpus)} local candidates (maximum {MAX_JOBS})"
+                else:
+                    mapped = local_semantic_scores(profile, embedding_jobs)
+                    scores = [mapped[str(index)] for index in range(len(corpus))]
+                    integration = f"local {LOCAL_EMBEDDING_MODEL} embeddings; no external AI call"
+            except LocalEmbeddingUnavailable:
+                # The optional package/model may be absent in small deployments.
+                # Continue with the explainable deterministic matcher rather than failing.
+                integration = "local deterministic matching fallback; MiniLM unavailable; no external AI call"
             except ProviderError as exc:
                 raise HTTPException(exc.status_code, str(exc)) from None
-            integration = f"hosted OpenAI-compatible embeddings; consented, top {len(corpus)} local candidates (maximum {MAX_JOBS})"
         return json_safe({**match_jobs(profile, corpus, semantic_scores=scores, limit=payload.limit), "integration": integration})
 
     @router.get("/resume/roles")
@@ -194,7 +205,9 @@ def create_jobmatch_router(load_jobs: Callable[[], pd.DataFrame]) -> APIRouter:
                       or payload.target_role.casefold() in str(job.get("title", "")).casefold()]
         matched = match_jobs(profile, corpus, limit=50)["items"]
         try:
-            return generate_suggestions(profile, matched, target_role=payload.target_role, consent=payload.consent_external)
+            if not payload.consent_external:
+                return deterministic_suggestions(profile, matched, target_role=payload.target_role)
+            return generate_suggestions(profile, matched, target_role=payload.target_role, consent=True)
         except ProviderError as exc:
             raise HTTPException(exc.status_code, str(exc)) from None
 

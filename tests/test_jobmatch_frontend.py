@@ -124,23 +124,18 @@ def test_parse_review_baseline_match_roles_gaps_and_no_persistence():
     """)
 
 
-def test_external_ai_requires_explicit_request_and_consent_and_reports_503():
+def test_local_semantic_matching_and_grounded_suggestions_require_no_external_consent():
     run_scenario(r"""
       await tick();await parse();navigate('My Matches');input('embeddings',true);click('match');await tick();
-      assert(!calls.some(call=>call.path.endsWith('/resume/match')));
-      assert(root.innerHTML.includes('require explicit consent'));
-      input('matchConsent',true);providerUnavailable=true;click('match');await tick();
-      assert(!root.innerHTML.includes('unavailable (503)'));
-      assert(root.innerHTML.includes('External AI is not configured on the server'));
-      assert(root.innerHTML.includes('Baseline matching remains available'));
+      const localMatch=calls.find(call=>call.path.endsWith('/resume/match'));
+      assert.equal(localMatch.body.use_embeddings,true);assert.equal(localMatch.body.consent_external,false);
+      assert(root.innerHTML.includes('70.0 / 100'));
       navigate('Resume Suggestions');
-      assert(!calls.some(call=>call.path.endsWith('/resume/suggestions')));
-      click('suggest');await tick();assert(!calls.some(call=>call.path.endsWith('/resume/suggestions')));
-      input('suggestionConsent',true);input('target','ML Engineer');click('suggest');await tick();
+      input('target','ML Engineer');click('suggest');await tick();
       const req=calls.find(call=>call.path.endsWith('/resume/suggestions'));
-      assert.equal(req.body.consent_external,true);assert.equal(req.body.target_role,'ML Engineer');
+      assert.equal(req.body.consent_external,false);assert.equal(req.body.target_role,'ML Engineer');
       assert(root.innerHTML.includes('&lt;script&gt;unsafe&lt;/script&gt;'));
-      const count=calls.length;click('suggest');await tick();assert.equal(calls.length,count);
+      const count=calls.length;click('suggest');await tick();assert.equal(calls.length,count+1);
     """)
 
 
