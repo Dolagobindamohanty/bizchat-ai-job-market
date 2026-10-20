@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
+import ipaddress
 import json
 import os
 import re
@@ -46,6 +47,11 @@ def resolve_data_path(configured: str | None) -> Path:
 
 
 DATA_PATH = resolve_data_path(os.getenv("BIZCHAT_DATA_PATH"))
+
+
+def validate_data_path() -> None:
+    if not DATA_PATH.is_file():
+        raise RuntimeError(f"Configured BIZCHAT_DATA_PATH does not exist or is not a file: {DATA_PATH}")
 
 
 class Overview(BaseModel):
@@ -215,6 +221,32 @@ class RequestGuardMiddleware(BaseHTTPMiddleware):
     }
     _requests: dict[tuple[str, str], deque[float]] = defaultdict(deque)
 
+    @staticmethod
+    def _client_ip(request: Request) -> str:
+        """Trust X-Forwarded-For only when the immediate peer is configured."""
+        peer = request.client.host if request.client else "unknown"
+        trusted = set()
+        for value in os.getenv("TRUSTED_PROXY_IPS", "").split(","):
+            try:
+                if value.strip():
+                    trusted.add(ipaddress.ip_address(value.strip()))
+            except ValueError:
+                continue
+        try:
+            peer_ip = ipaddress.ip_address(peer)
+        except ValueError:
+            return peer
+        if peer_ip not in trusted:
+            return peer
+        for candidate in reversed([part.strip() for part in request.headers.get("x-forwarded-for", "").split(",") if part.strip()]):
+            try:
+                candidate_ip = ipaddress.ip_address(candidate)
+            except ValueError:
+                continue
+            if candidate_ip not in trusted:
+                return str(candidate_ip)
+        return peer
+
     async def dispatch(self, request: Request, call_next) -> Response:
         if request.method == "OPTIONS":
             return await call_next(request)
@@ -230,7 +262,7 @@ class RequestGuardMiddleware(BaseHTTPMiddleware):
                 return JSONResponse(status_code=400, content={"detail": "Invalid Content-Length"})
 
         if request.url.path in self.EXPENSIVE_PATHS:
-            client = request.client.host if request.client else "unknown"
+            client = self._client_ip(request)
             key = (client, request.url.path)
             now = time.monotonic()
             if len(self._requests) > 10_000:
@@ -274,7 +306,17 @@ def load_jobs() -> pd.DataFrame:
     return _load_jobs(str(DATA_PATH), stat.st_mtime_ns, stat.st_size)
 
 
-app.include_router(create_jobmatch_router(load_jobs))
+def data_version() -> tuple[str, int, int]:
+    stat = DATA_PATH.stat()
+    return str(DATA_PATH), stat.st_mtime_ns, stat.st_size
+
+
+app.include_router(create_jobmatch_router(load_jobs, data_version))
+
+
+@app.on_event("startup")
+def validate_configured_data_path() -> None:
+    validate_data_path()
 
 
 def repository() -> DatabaseRepository:

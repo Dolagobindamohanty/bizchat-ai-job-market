@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from functools import lru_cache
 from typing import Annotated
 
 import pandas as pd
@@ -83,16 +84,26 @@ async def _memory_upload(request: Request) -> tuple[bytes, str]:
     return bytes(data), state["filename"]
 
 
-def create_jobmatch_router(load_jobs: Callable[[], pd.DataFrame]) -> APIRouter:
+def create_jobmatch_router(load_jobs: Callable[[], pd.DataFrame], data_version: Callable[[], tuple] | None = None) -> APIRouter:
     router = APIRouter(prefix="/api", tags=["jobmatch"])
 
-    def jobs() -> list[dict]:
+    def version() -> tuple:
+        if data_version is not None:
+            return data_version()
+        frame = load_jobs()
+        return (id(frame), len(frame), tuple(frame.columns))
+
+    @lru_cache(maxsize=4)
+    def classified_jobs(cache_key: tuple) -> tuple[dict, ...]:
         records = json_safe(load_jobs().to_dict(orient="records"))
         result = []
         for record in records:
             record["job_id"] = str(record.get("job_id", ""))
             result.append(classify_job(record))
-        return result
+        return tuple(result)
+
+    def jobs() -> list[dict]:
+        return list(classified_jobs(version()))
 
     def bengaluru_jobs() -> list[dict]:
         return [job for job in jobs() if job["is_tech"] and is_bengaluru(job.get("location"))]
@@ -174,7 +185,7 @@ def create_jobmatch_router(load_jobs: Callable[[], pd.DataFrame]) -> APIRouter:
                 else:
                     mapped = local_semantic_scores(profile, embedding_jobs)
                     scores = [mapped[str(index)] for index in range(len(corpus))]
-                integration = f"local {LOCAL_EMBEDDING_MODEL} embeddings; no external AI call"
+                    integration = f"local {LOCAL_EMBEDDING_MODEL} embeddings; no external AI call"
             except LocalEmbeddingUnavailable:
                 # The optional package/model may be absent in small deployments.
                 # Continue with the explainable deterministic matcher rather than failing.

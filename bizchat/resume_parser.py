@@ -19,9 +19,86 @@ MAX_EXPANDED_BYTES = 25 * 1024 * 1024
 MAX_ARCHIVE_ENTRIES = 1000
 MAX_TEXT_CHARS = 200_000
 
+_YEAR_VALUE = r"(\d{1,2}(?:\.\d)?)"
+_SECTION_HEADINGS = r"education|academic\s+background|qualifications?|experience|employment|projects?|certifications?|skills"
+
 
 class _SafeExtractionError(ValueError):
     pass
+
+
+def _extract_experience(text: str) -> float | None:
+    """Extract only explicitly labelled or resume-style experience durations."""
+    patterns = (
+        # 3 years of professional experience / 3+ yrs experience
+        rf"\b{_YEAR_VALUE}\s*\+?\s*(?:years?|yrs?)\s+(?:of\s+)?(?:professional\s+|work\s+|industry\s+|relevant\s+)?experience\b",
+        # experience: 4 years / professional experience 6 years
+        rf"\b(?:professional\s+|total\s+|relevant\s+|work\s+|industry\s+)?experience\s*:?\s*{_YEAR_VALUE}\s*\+?\s*(?:years?|yrs?)\b",
+    )
+    values = [float(value) for pattern in patterns for value in re.findall(pattern, text, re.I)]
+    # A standalone duration is common in compact resume headers, but only accept
+    # it when the whole line is the duration; prose such as project timelines is
+    # intentionally excluded.
+    values.extend(float(value) for value in re.findall(
+        rf"^\s*(?:total\s+)?{_YEAR_VALUE}\s*\+?\s*(?:years?|yrs?)\s*$",
+        text, re.I | re.M,
+    ))
+    valid = [value for value in values if value <= 60]
+    return max(valid, default=None)
+
+
+def _education_lines(text: str) -> list[str]:
+    section = re.search(
+        rf"(?ims)^\s*(?:education|academic\s+background|qualifications?)\s*:?\s*$\n?(.*?)(?=^\s*(?:{_SECTION_HEADINGS})\s*:?\s*$|\Z)",
+        text,
+    )
+    lines = section.group(1).splitlines() if section else []
+    # Resumes without an Education heading still commonly put a degree on its
+    # own line. Keep those candidates line-scoped to avoid project prose.
+    lines.extend(text.splitlines())
+    return lines
+
+
+def _extract_education(text: str) -> list[str]:
+    degrees = (
+        ("Doctorate", r"\b(?:ph\.?\s*d\.?|doctorate|doctor\s+of\s+philosophy)\b"),
+        ("Master's degree", r"\b(?:m\.?\s*(?:tech|sc|s)\.?|master(?:'s|s)?(?:\s+degree)?|master\s+of)\b"),
+        ("Bachelor's degree", r"\b(?:b\.?\s*(?:tech|sc|e)\.?|bachelor(?:'s|s)?(?:\s+degree)?|bachelor\s+of)\b"),
+    )
+    found = []
+    section_match = re.search(
+        rf"(?ims)^\s*(?:education|academic\s+background|qualifications?)\s*:?\s*$\n?(.*?)(?=^\s*(?:{_SECTION_HEADINGS})\s*:?\s*$|\Z)",
+        text,
+    )
+    section_lines = set(section_match.group(1).splitlines()) if section_match else set()
+    for line in _education_lines(text):
+        if not line.strip():
+            continue
+        for label, pattern in degrees:
+            if not re.search(pattern, line, re.I):
+                continue
+            # Degree-led lines and explicit degree fields are strong signals;
+            # otherwise require institution/graduation context on the same line.
+            contextual = re.search(
+                r"^\s*(?:degree\s*[:\-]|(?:ph\.?\s*d\.?|doctorate|m\.?\s*(?:tech|sc|s)\.?|master|b\.?\s*(?:tech|sc|e)\.?|bachelor))\b"
+                r"|\b(?:university|college|school|institute|graduat(?:ed|ion)|class\s+of|major)\b"
+                r"|\b(?:19|20)\d{2}\b",
+                line,
+                re.I,
+            )
+            # Outside an Education section, require a degree-led/degree-field
+            # line; an arbitrary project sentence mentioning a degree is not
+            # sufficient even if it mentions an institution elsewhere.
+            if line not in section_lines:
+                contextual = contextual and re.search(
+                    r"^\s*(?:degree\s*[:\-]|(?:ph\.?\s*d\.?|doctorate|m\.?\s*(?:tech|sc|s)\.?|master|b\.?\s*(?:tech|sc|e)\.?|bachelor))\b"
+                    r".*(?:\b(?:degree|in|of|university|college|school|institute|graduat(?:ed|ion))\b|\b(?:19|20)\d{2}\b)",
+                    line,
+                    re.I,
+                )
+            if contextual and label not in found:
+                found.append(label)
+    return found
 
 
 def parse_resume(text: str) -> dict:
@@ -35,15 +112,8 @@ def parse_resume(text: str) -> dict:
         role = classify_job({"title": line})["role_category"]
         if role != "Unknown" and role not in titles:
             titles.append(role)
-    # Require explicit experience language; graduation dates are not experience.
-    years = re.findall(r"\b(\d{1,2}(?:\.\d)?)\s*\+?\s*(?:years?|yrs?)\s+(?:of\s+)?(?:professional\s+|work\s+|industry\s+|relevant\s+)?experience\b", text, re.I)
-    experience = max((float(value) for value in years if float(value) <= 60), default=None)
-    degrees = (
-        ("Doctorate", r"\b(?:ph\.?d\.?|doctorate)\b"),
-        ("Master's degree", r"\b(?:m\.?tech\.?|m\.?sc\.?|masters?|m\.s\.)\b"),
-        ("Bachelor's degree", r"\b(?:b\.?tech\.?|b\.?sc\.?|bachelor(?:'s)?|b\.e\.)\b"),
-    )
-    education = [label for label, pattern in degrees if re.search(pattern, text, re.I)]
+    experience = _extract_experience(text)
+    education = _extract_education(text)
     projects = []
     project_section = re.search(r"(?ims)^\s*(?:personal\s+|selected\s+)?projects?\s*:?\s*\n(.*?)(?=^\s*(?:education|experience|employment|certifications?|skills)\s*:?\s*$|\Z)", text)
     if project_section:

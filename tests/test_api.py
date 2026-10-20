@@ -145,6 +145,24 @@ def test_request_guard_rejects_oversized_body():
     assert response.status_code == 413
 
 
+def test_request_guard_ignores_untrusted_forwarded_for(monkeypatch):
+    api_main.RequestGuardMiddleware._requests.clear()
+    monkeypatch.delenv("TRUSTED_PROXY_IPS", raising=False)
+    request = type("Request", (), {"client": type("Client", (), {"host": "10.0.0.8"})(), "headers": {"x-forwarded-for": "203.0.113.9"}})()
+    assert api_main.RequestGuardMiddleware._client_ip(request) == "10.0.0.8"
+
+
+def test_configured_data_path_validation_fails_loudly(monkeypatch, tmp_path):
+    missing = tmp_path / "missing.csv"
+    monkeypatch.setattr(api_main, "DATA_PATH", missing)
+    try:
+        api_main.validate_data_path()
+    except RuntimeError as exc:
+        assert str(missing) in str(exc)
+    else:
+        raise AssertionError("missing configured data path should fail validation")
+
+
 def test_jobs_serialize_missing_salary_source_url_and_nat_as_null(monkeypatch):
     jobs = prepare_jobs(pd.DataFrame([{
         "job_id": "missing-1", "title": "Data Engineer", "company": "Example",

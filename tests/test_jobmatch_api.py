@@ -83,6 +83,30 @@ def test_semantic_alignment_and_suggestion_facts_computed_on_server(client, monk
     assert client.post("/api/resume/suggestions", json={"profile": {}, "gaps": ["fake"]}).status_code == 422
 
 
+def test_hosted_embedding_metadata_is_not_overwritten_by_local_metadata(client, monkeypatch):
+    monkeypatch.setattr(jobmatch, "semantic_scores", lambda profile, jobs, consent: {str(job["job_id"]): .9 for job in jobs})
+    result = client.post("/api/resume/match", json={"profile": {}, "use_embeddings": True, "consent_external": True})
+    assert result.status_code == 200
+    assert result.json()["integration"].startswith("hosted OpenAI-compatible embeddings;")
+
+
+def test_classified_jobs_are_cached_by_data_version():
+    rows = pd.DataFrame([{"job_id": "1", "title": "Software Engineer", "company": "Acme", "location": "Bengaluru", "skills": []}])
+    calls = {"load": 0}
+
+    def load():
+        calls["load"] += 1
+        return rows
+
+    app = FastAPI()
+    app.include_router(jobmatch.create_jobmatch_router(load, lambda: ("jobs.csv", 1, 2)))
+    cached_client = TestClient(app)
+    assert cached_client.get("/api/jobs/bengaluru").status_code == 200
+    assert cached_client.get("/api/jobs/ai").status_code == 200
+    assert cached_client.get("/api/resume/gaps").status_code == 200
+    assert calls["load"] == 1
+
+
 def test_upload_bounded_in_memory_and_invalid_formats(client, monkeypatch):
     monkeypatch.setattr(jobmatch, "extract_resume_file", lambda data, filename: "Python Software Engineer")
     response = client.post("/api/resume/upload", files={"file": ("resume.pdf", b"%PDF-test", "application/pdf")})

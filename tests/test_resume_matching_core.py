@@ -89,6 +89,23 @@ def test_empty_and_ambiguous_resume_does_not_invent_experience():
         parse_resume("x" * 200_001)
 
 
+@pytest.mark.parametrize("phrase, expected", [
+    ("3+ years", 3),
+    ("5 yrs", 5),
+    ("Experience: 4 years", 4),
+    ("Professional experience 6 years", 6),
+])
+def test_common_experience_formats_are_extracted_without_project_prose(phrase, expected):
+    assert parse_resume(phrase)["years_experience"] == expected
+
+
+def test_education_requires_heading_or_degree_context():
+    project_only = "Projects\nBuilt a master's recommendation engine and a bachelor ranking demo."
+    assert parse_resume(project_only)["education"] == []
+    text = "Education\nM.S. Computer Science, Example University, 2022\n\nProjects\nBuilt a master's recommendation engine."
+    assert parse_resume(text)["education"] == ["Master's degree"]
+
+
 def test_baseline_scoring_is_explainable_and_renormalized():
     profile = {"skills": ["Python"], "titles": ["Software Engineer"], "years_experience": 2}
     item = match_jobs(profile, [job()])["items"][0]
