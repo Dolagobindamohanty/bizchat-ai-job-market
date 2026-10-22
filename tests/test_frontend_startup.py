@@ -26,7 +26,7 @@ class PageContract(HTMLParser):
 
 def assert_job_table_contract(source):
     table = source.split("function jobTable(list)", 1)[1].split(
-        "function watchList", 1
+        "function viewLabel", 1
     )[0]
     # Keep row generation separate from the quoted empty-state fallback. This
     # specifically catches the missing quote that prevented the script parsing.
@@ -39,8 +39,10 @@ def assert_job_table_contract(source):
         table,
         re.S,
     )
-    for field in ("title", "posted", "company", "city", "source"):
+    for field in ("title", "company", "source"):
         assert f"escapeHTML(j.{field})" in table
+    assert "locationLabel(j)" in table
+    assert "j.posted||'Posting date unavailable'" in table
     assert 'class="job-row"' in table
 
 
@@ -78,17 +80,12 @@ def test_public_page_supplies_startup_dom_before_script():
         r"\s*const response\s*=\s*await fetchAPI\('/jobs\?page_size=100'\)",
         source,
     )
-    assert "bindAccount();load();" in source
+    assert "bindAccount();" in source
+    assert "load();" in source
     assert "${jobTable(list.slice(0,6))}" in source
 
 
-def test_salaries_static_expression_contract():
+def test_salary_section_is_not_in_primary_navigation():
     source = (FRONTEND / "app.js").read_text(encoding="utf-8")
-    # Guard the reviewed delimiter order: denominator, round, row, map, bars,
-    # panel. This is a targeted source assertion, not a JS syntax checker.
-    expression = (
-        "${panel('Salary by city',bars(cities.map(([c])=>[c,Math.round("
-        "list.filter(j=>j.city===c).reduce((a,j)=>a+(j.min+j.max)/2,0)/"
-        "(list.filter(j=>j.city===c).length||1))]),'#f59e0b','L'))}"
-    )
-    assert expression in source
+    assert "['Salaries'" not in source
+    assert "['Skills','Locations','Salaries'" not in source

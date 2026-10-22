@@ -48,7 +48,7 @@ def test_normalize_retains_display_and_prefers_valid_backend_city_tags():
       assert.deepEqual(JSON.parse(run('JSON.stringify(jobs.map(j=>j.cities))')),
         [['Bengaluru','Hyderabad'],['Gurugram','Bengaluru'],[],['Bengaluru'],
          ['Bengaluru'],['Bengaluru'],['Bengaluru'],['Paris']]);
-      assert(run('jobTable(jobs)').includes('Bangalore / Hyderabad - Campus'));
+      assert(run('jobTable(jobs)').includes('Bengaluru + Hyderabad'));
     """)
 
 
@@ -63,13 +63,13 @@ def test_dropdown_and_counts_merge_aliases_and_filter_multi_city_membership():
       assert.equal((el('city-filter').innerHTML.match(/<option>Bengaluru<\/option>/g)||[]).length,1);
       assert(!el('city-filter').innerHTML.includes('Bangalore'));
       assert(!el('city-filter').innerHTML.includes('campus'));
-      assert(!el('city-filter').innerHTML.includes('India'));
+      assert(el('city-filter').innerHTML.includes('All locations (India)'));
       assert.deepEqual(JSON.parse(run("JSON.stringify(counts('city',jobs))")),[['Bengaluru',4],['Hyderabad',1]]);
       el('city-filter').value='Bengaluru';
       assert.deepEqual(JSON.parse(run('JSON.stringify(filtered().map(j=>j.id))')),['a','b','c','d']);
       el('city-filter').value='Hyderabad';
       assert.deepEqual(JSON.parse(run('JSON.stringify(filtered().map(j=>j.id))')),['d']);
-      el('city-filter').value='All cities';
+      el('city-filter').value='All locations (India)';
       el('role-filter').value='Mid-level';el('experience-filter').value='junior';el('remote-filter').value='Remote';
       navigate('Overview');
       assert.equal(run('filtered().length'),0);
@@ -127,7 +127,7 @@ def test_actual_table_typing_preserves_cursor_and_dates_sort_chronologically():
     """)
 
 
-def test_salary_view_uses_canonical_membership_and_never_zero_for_missing_values():
+def test_salary_view_is_removed_from_public_dashboard():
     run_scenario(r"""
       await tick();
       run(`jobs=normalize([
@@ -135,14 +135,12 @@ def test_salary_view_uses_canonical_membership_and_never_zero_for_missing_values
         {location:'Bengaluru; Mumbai',salary_min_lpa:20,salary_max_lpa:30,skills:['Python']},
         {location:'BLR',salary_min_lpa:null,salary_max_lpa:null,skills:['Python']}
       ]);populateFilters();`);
-      navigate('Salaries');
-      assert(root.innerHTML.includes('Median salary by city'));
-      assert(root.innerHTML.includes('20L'));
-      assert(root.innerHTML.includes('25L'));
-      run(`jobs=normalize([{location:'Bangalore',skills:['Python']}]);`);
+      assert(!run("NAV.some(([name])=>name==='Salaries')"));
+      assert(!el('navigation').innerHTML.includes('Salaries'));
+      navigate('Overview');
       run('render()');
-      assert(root.innerHTML.includes('No data for these filters.'));
-      assert(!root.innerHTML.includes('0L'));
+      assert(!root.innerHTML.toLowerCase().includes('salary'));
+      assert(!el('kpis').innerHTML.toLowerCase().includes('salary'));
     """)
 
 

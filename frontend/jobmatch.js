@@ -164,7 +164,13 @@
      else if (action==='reset-filters') { Object.assign(state,{query:'',source:'',company:'',role:'',skillQuery:'',page:1}); loadCatalog(); }
     else run(action);
   });
-  // setup() has already registered the nav's delegated click listener.
+   cards = function(items,matched=false) {
+     return arr(items).map(job => {
+       const url = safeURL(job.source_url || job.sourceUrl || job.url);
+       return `<article class="jm-job"><div class="jm-job-heading"><div><h3>${e(job.title || 'Untitled role')}</h3><p>${e(job.company || 'Company not listed')} · ${e(locationLabel(job))}</p></div>${matched?`<strong class="jm-score">${e(score(job.score))}</strong>`:''}</div><p>${e(job.source || 'Source not listed')} · ${e(job.remote_type || 'Work mode not supplied')}</p><p class="job-freshness">${freshness(job)}</p><p>${e(words(job.skills) || 'Skills not listed')}</p>${matched?`<p><b>Matched skills:</b> ${e(words(job.matched_skills) || 'None identified')}</p><p><b>Not identified in your profile:</b> ${e(words(job.missing_skills) || 'None identified')} — verify and correct your profile.</p><p>${e(job.reason || '')}</p><details><summary>Score breakdown</summary>${structured(job.breakdown || {})}</details>`:''}${url?`<a href="${e(url)}" target="_blank" rel="noopener noreferrer">View source listing ↗</a>`:'<span class="form-status">No secure source link available</span>'}</article>`;
+     }).join('');
+   };
+   // setup() has already registered the nav's delegated click listener.
   // Replace only its children; keep that listener and preserve the five legacy views.
   $('navigation').innerHTML = NAV.map(([name,icon])=>`<button type="button" data-view="${e(name)}"><i>${e(icon)}</i>${e(name)}</button>`).join('');
   setView('Bengaluru Jobs');

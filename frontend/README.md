@@ -19,7 +19,7 @@ Open <http://localhost:3000>. The dashboard uses the deployed Render API by defa
 
 If the API is unavailable or returns no jobs, the bundled sample dataset is rendered automatically and labelled as illustrative. Public dashboard and Bengaluru Jobs results are current-only by default: listings older than the configured freshness window, or without a posting date, are hidden. Bengaluru Jobs has an explicit **Include older or unknown-date listings** opt-in; it sends `include_stale=true` and leaves the default current-only scope unchanged.
 
-The UI displays freshness status, listing age, posted date, and last verified/collected date when those fields are returned. The `/data-quality` metadata is used to show the configured freshness window and available dataset/source coverage. Salary copy describes employer disclosure signals and coverage counts rather than promising market value. Learn next forecast values are labelled deterministic baselines over a stated recent sample window, not validated predictions.
+The UI displays freshness status, listing age, posted date, and last verified/collected date when those fields are returned. The `/data-quality` metadata is used to show the configured freshness window and available dataset/source coverage. Learn next forecast values are labelled deterministic baselines over a stated recent sample window, not validated predictions. Location filters use canonical city labels, show multi-city roles with a `+` separator, and keep country-only or remote listings outside city counts.
 
 ## Deploy to Vercel without Node.js
 

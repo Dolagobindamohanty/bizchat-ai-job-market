@@ -86,8 +86,9 @@ def test_script_order_navigation_default_and_background_editor_focus():
     run_scenario(r"""
       await tick();
       assert.equal(run('view'),'Bengaluru Jobs');
-      assert.equal(run('NAV.length'),11);
-      for(const name of ['Overview','Skills','Locations','Salaries','Learn next']) assert(run(`NAV.some(([n])=>n===${JSON.stringify(name)})`));
+      assert.equal(run('NAV.length'),10);
+      for(const name of ['Overview','Skills','Locations','Learn next']) assert(run(`NAV.some(([n])=>n===${JSON.stringify(name)})`));
+      assert(!run("NAV.some(([n])=>n==='Salaries')"));
       assert.equal(el('navigation').listeners.click.length,1);
       assert(calls.some(call=>call.path.endsWith('/jobs/bengaluru')));
       assert(!root.innerHTML.includes('href="javascript:'));
