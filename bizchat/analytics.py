@@ -2,10 +2,63 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterable
+from datetime import date
+import os
 
 import pandas as pd
 
 from bizchat.locations import city_tags, matches_city
+
+
+DEFAULT_FRESHNESS_DAYS = 90
+
+
+def freshness_cutoff_days() -> int:
+    """Return the configured maximum age for public current-only results."""
+    raw = os.getenv("BIZCHAT_FRESHNESS_DAYS", str(DEFAULT_FRESHNESS_DAYS)).strip()
+    try:
+        value = int(raw)
+    except ValueError:
+        return DEFAULT_FRESHNESS_DAYS
+    return value if value >= 0 else DEFAULT_FRESHNESS_DAYS
+
+
+def with_freshness(jobs: pd.DataFrame, today: date | None = None) -> pd.DataFrame:
+    """Annotate listings with freshness fields used by public API responses."""
+    result = jobs.copy()
+    reference = today or date.today()
+    posted = pd.to_datetime(result.get("posted_date", pd.Series(index=result.index)), errors="coerce", utc=True)
+    cutoff = freshness_cutoff_days()
+
+    def age(value: pd.Timestamp) -> int | None:
+        if pd.isna(value):
+            return None
+        return max((reference - value.date()).days, 0)
+
+    result["age_days"] = posted.map(age).astype("Int64")
+    result["freshness_status"] = result["age_days"].map(
+        lambda value: "unknown" if pd.isna(value) else "current" if int(value) <= cutoff else "stale"
+    )
+    collected = pd.to_datetime(result.get("collected_at", pd.Series(index=result.index)), errors="coerce", utc=True)
+    result["collected_at"] = collected
+    if "last_verified" not in result:
+        result["last_verified"] = collected
+    else:
+        result["last_verified"] = pd.to_datetime(result["last_verified"], errors="coerce", utc=True).fillna(collected)
+    return result
+
+
+def freshness_counts(jobs: pd.DataFrame) -> dict[str, int]:
+    statuses = with_freshness(jobs)["freshness_status"]
+    return {status: int((statuses == status).sum()) for status in ("current", "stale", "unknown")}
+
+
+def current_only(jobs: pd.DataFrame, include_stale: bool = False) -> pd.DataFrame:
+    """Apply the public current-only default while preserving explicit opt-in."""
+    annotated = with_freshness(jobs)
+    if include_stale:
+        return annotated
+    return annotated[annotated["freshness_status"] == "current"].copy()
 
 
 SKILL_ALIASES: dict[str, tuple[str, ...]] = {
@@ -47,6 +100,7 @@ def prepare_jobs(df: pd.DataFrame) -> pd.DataFrame:
     for column, default in {
         "salary_min_lpa": None, "salary_max_lpa": None, "experience_min": None,
         "remote_type": "Unknown", "location": "Unknown", "source": "Unknown",
+        "collected_at": None,
     }.items():
         if column not in result:
             result[column] = default
@@ -56,6 +110,7 @@ def prepare_jobs(df: pd.DataFrame) -> pd.DataFrame:
     # Source feeds occasionally contain blank or malformed dates.  Keep those
     # rows (validation reports them) while making analytics operations safe.
     result["posted_date"] = pd.to_datetime(result["posted_date"], errors="coerce")
+    result["collected_at"] = pd.to_datetime(result["collected_at"], errors="coerce", utc=True)
     result["salary_mid_lpa"] = (result["salary_min_lpa"] + result["salary_max_lpa"]) / 2
     result["skills"] = (result["title"].fillna("") + " " + result["description"].fillna("")).map(extract_skills)
     result["skill_count"] = result["skills"].str.len()

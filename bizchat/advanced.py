@@ -88,10 +88,14 @@ def semantic_search(query: str, jobs: pd.DataFrame, limit: int = 20) -> list[dic
         token_matches = query_tokens & (title_tokens | description_tokens)
         score = round(10 * len(skill_matches) + 2 * len(query_tokens & title_tokens) + len(query_tokens & description_tokens), 2)
         if score:
-            results.append({"job_id": row.job_id, "title": row.title, "company": row.company, "location": row.location,
-                            "source_url": row.source_url, "score": score, "matched_skills": skill_matches,
-                            "matched_tokens": sorted(token_matches),
-                            "explanation": "Skill matches are weighted above title and description token overlap."})
+            result = {"job_id": row.job_id, "title": row.title, "company": row.company, "location": row.location,
+                      "source_url": row.source_url, "score": score, "matched_skills": skill_matches,
+                      "matched_tokens": sorted(token_matches),
+                      "explanation": "Skill matches are weighted above title and description token overlap."}
+            for field in ("freshness_status", "age_days", "last_verified", "collected_at"):
+                if hasattr(row, field):
+                    result[field] = getattr(row, field)
+            results.append(result)
     return sorted(results, key=lambda item: (-item["score"], item["title"], item["job_id"]))[:limit]
 
 
@@ -115,6 +119,12 @@ def alert_preview(filters: dict[str, Any], jobs: pd.DataFrame) -> dict[str, Any]
             scoped = scoped[scoped["posted_date"].dt.date >= boundary] if key == "start_date" else scoped[scoped["posted_date"].dt.date <= boundary]
         else:
             scoped = scoped[scoped[column].astype(str).str.casefold() == str(value).casefold()]
-    sample = [{"job_id": row.job_id, "title": row.title, "company": row.company, "location": row.location} for row in scoped.sort_values(["posted_date", "job_id"], ascending=[False, True], na_position="last").head(5).itertuples()]
+    sample = []
+    for row in scoped.sort_values(["posted_date", "job_id"], ascending=[False, True], na_position="last").head(5).itertuples():
+        item = {"job_id": row.job_id, "title": row.title, "company": row.company, "location": row.location}
+        for field in ("freshness_status", "age_days", "last_verified", "collected_at"):
+            if hasattr(row, field):
+                item[field] = getattr(row, field)
+        sample.append(item)
     return {"filters": applied, "matched_jobs": len(scoped), "sample_jobs": sample,
             "delivery": {"status": "preview_only", "message": "Delivery requires an authorized email or Telegram provider."}}

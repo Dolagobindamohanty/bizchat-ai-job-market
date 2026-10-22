@@ -15,6 +15,7 @@ from bizchat.ai_providers import (LOCAL_EMBEDDING_MODEL, MAX_JOBS, LocalEmbeddin
                                    deterministic_suggestions, generate_suggestions,
                                    local_semantic_scores, semantic_scores)
 from bizchat.job_classifier import classify_job, is_bengaluru
+from bizchat.analytics import current_only, with_freshness
 from bizchat.matcher import match_jobs
 from bizchat.resume_parser import extract_resume_file, parse_resume
 
@@ -105,11 +106,17 @@ def create_jobmatch_router(load_jobs: Callable[[], pd.DataFrame], data_version: 
     def jobs() -> list[dict]:
         return list(classified_jobs(version()))
 
-    def bengaluru_jobs() -> list[dict]:
-        return [job for job in jobs() if job["is_tech"] and is_bengaluru(job.get("location"))]
+    def bengaluru_jobs(include_stale: bool = False) -> list[dict]:
+        candidates = [job for job in jobs() if job["is_tech"] and is_bengaluru(job.get("location"))]
+        # Isolated router consumers may provide the legacy minimal job shape
+        # without posted_date. The main app always normalizes that column.
+        if not include_stale and any("posted_date" in job for job in candidates):
+            frame = current_only(pd.DataFrame(candidates), include_stale=False)
+            candidates = frame.to_dict(orient="records")
+        return [json_safe(with_freshness(pd.DataFrame([job])).iloc[0].to_dict()) for job in candidates]
 
-    def listing(ai: bool, page: int, page_size: int, q: str, role: str, company: str, skills: str, source: str = "") -> dict:
-        items = bengaluru_jobs()
+    def listing(ai: bool, page: int, page_size: int, q: str, role: str, company: str, skills: str, source: str = "", include_stale: bool = False) -> dict:
+        items = bengaluru_jobs(include_stale=include_stale)
         if ai:
             items = [job for job in items if job["is_ai"]]
         facets = {"sources": sorted({str(job.get("source", "")) for job in items if job.get("source")}),
@@ -132,20 +139,22 @@ def create_jobmatch_router(load_jobs: Callable[[], pd.DataFrame], data_version: 
                   page_size: Annotated[int, Query(ge=1, le=100)] = 20,
                   q: Annotated[str, Query(max_length=200)] = "",
                   role: Annotated[str, Query(max_length=200)] = "",
-                  company: Annotated[str, Query(max_length=200)] = "",
-                  skills: Annotated[str, Query(max_length=500)] = "",
-                  source: Annotated[str, Query(max_length=100)] = ""):
-        return listing(False, page, page_size, q, role, company, skills, source)
+                   company: Annotated[str, Query(max_length=200)] = "",
+                   skills: Annotated[str, Query(max_length=500)] = "",
+                   source: Annotated[str, Query(max_length=100)] = "",
+                   include_stale: bool = False):
+        return listing(False, page, page_size, q, role, company, skills, source, include_stale)
 
     @router.get("/jobs/ai")
     def ai_jobs(page: Annotated[int, Query(ge=1, le=100_000)] = 1,
                 page_size: Annotated[int, Query(ge=1, le=100)] = 20,
                 q: Annotated[str, Query(max_length=200)] = "",
                 role: Annotated[str, Query(max_length=200)] = "",
-                company: Annotated[str, Query(max_length=200)] = "",
-                skills: Annotated[str, Query(max_length=500)] = "",
-                source: Annotated[str, Query(max_length=100)] = ""):
-        return listing(True, page, page_size, q, role, company, skills, source)
+                 company: Annotated[str, Query(max_length=200)] = "",
+                 skills: Annotated[str, Query(max_length=500)] = "",
+                 source: Annotated[str, Query(max_length=100)] = "",
+                 include_stale: bool = False):
+        return listing(True, page, page_size, q, role, company, skills, source, include_stale)
 
     @router.post("/resume/parse")
     def parse(payload: ResumeParseRequest):

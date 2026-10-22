@@ -3,7 +3,7 @@
   'use strict';
   const views = [['Bengaluru Jobs','⌖'],['Upload Resume','↑'],['My Matches','◎'],['Role Fit','◇'],['Skill Gaps','✦'],['Resume Suggestions','↗']];
   NAV.unshift(...views);
-  const state = {text:'',file:null,profile:null,matches:null,suggestions:null,target:'',embeddings:false,lastMatchEmbeddings:false,matchConsent:false,suggestionConsent:false,busy:'',error:'',notice:'',query:'',source:'',company:'',role:'',skillQuery:'',matchSource:'',scope:'bengaluru',page:1,catalog:null,catalogBusy:false,catalogError:''};
+  const state = {text:'',file:null,profile:null,matches:null,suggestions:null,target:'',embeddings:false,lastMatchEmbeddings:false,matchConsent:false,suggestionConsent:false,busy:'',error:'',notice:'',query:'',source:'',company:'',role:'',skillQuery:'',matchSource:'',scope:'bengaluru',includeStale:false,freshnessDays:90,metadata:null,page:1,catalog:null,catalogBusy:false,catalogError:''};
   let generation = 0, catalogRequest = 0, paintedView = '';
   const e = escapeHTML, arr = value => Array.isArray(value) ? value : [], words = value => arr(value).join(', ');
   const split = value => value.split(',').map(x => x.trim()).filter(Boolean);
@@ -12,6 +12,10 @@
   const safeURL = value => { try { const url = new URL(value); return url.protocol === 'https:' ? url.href : ''; } catch (_) { return ''; } };
   const score = value => Number.isFinite(Number(value)) ? `${Number(value).toFixed(1)} / 100` : 'Not scored';
   const profileReady = () => state.profile && typeof state.profile === 'object';
+  const dateLabel = (value, unknown='Unknown') => { if (!value) return unknown; const date = new Date(value); return Number.isNaN(date.getTime()) ? unknown : date.toLocaleDateString([], {dateStyle:'medium'}); };
+  const freshness = job => { const status = String(job.freshness_status || (Number.isFinite(Number(job.age_days)) ? (Number(job.age_days) <= state.freshnessDays ? 'current' : 'stale') : 'unknown')).toLowerCase(); const age = Number.isFinite(Number(job.age_days)) ? `${job.age_days} day${Number(job.age_days)===1?'':'s'}` : 'unknown'; const verified = dateLabel(job.last_verified || job.collected_at); return `<span class="freshness-badge freshness-${e(status)}">${e(status==='current'?'Current':status==='stale'?'Stale':'Date unknown')}</span><span class="freshness-detail">Age: ${e(age)} · Posted: ${e(dateLabel(job.posted_date || job.posted,'Unknown'))} · Last verified/collected: ${e(verified)}</span>`; };
+  const coverage = () => { const metadata = state.metadata || {}, scope = metadata.dataset_scope || {}, facets = state.catalog?.facets || {}, companies = (facets.companies || []).length, sources = metadata.source_count ?? (facets.sources || []).length; return `Coverage: ${metadata.dataset_rows ?? 'configured'} dataset rows · ${companies || metadata.company_count || 'configured'} companies · ${sources || 'configured'} sources${scope.locations?.length ? ` · ${scope.locations.length} locations` : ''}`; };
+  const scopeMessage = () => `Bengaluru Jobs is a Bengaluru-only feed of explicit Bengaluru tech roles. India Insights is the broader configured India dataset. ${coverage()}`;
   const sourceOptions = selected => ['','greenhouse','lever','ashby'].map(source => `<option value="${source}" ${source===selected?'selected':''}>${source?e(source[0].toUpperCase()+source.slice(1)):'All sources'}</option>`).join('');
   function structured(value) {
     if (value === null || value === undefined) return '';
@@ -22,7 +26,7 @@
   function cards(items,matched=false) {
     return arr(items).map(job => {
       const url = safeURL(job.source_url || job.sourceUrl || job.url);
-      return `<article class="jm-job"><div class="jm-job-heading"><div><h3>${e(job.title || 'Untitled role')}</h3><p>${e(job.company || 'Company not listed')} · ${e(job.location || job.city || 'Location not listed')}</p></div>${matched?`<strong class="jm-score">${e(score(job.score))}</strong>`:''}</div><p>${e(job.source || 'Source not listed')} · ${e(job.posted_date || 'Posting date not supplied')} · ${e(job.remote_type || 'Work mode not supplied')}</p><p>${e(words(job.skills) || 'Skills not listed')}</p>${matched?`<p><b>Matched skills:</b> ${e(words(job.matched_skills) || 'None identified')}</p><p><b>Not identified in your profile:</b> ${e(words(job.missing_skills) || 'None identified')} — verify and correct your profile.</p><p>${e(job.reason || '')}</p><details><summary>Score breakdown</summary>${structured(job.breakdown || {})}</details>`:''}${url?`<a href="${e(url)}" target="_blank" rel="noopener noreferrer">View source listing ↗</a>`:'<span class="form-status">No secure source link available</span>'}</article>`;
+      return `<article class="jm-job"><div class="jm-job-heading"><div><h3>${e(job.title || 'Untitled role')}</h3><p>${e(job.company || 'Company not listed')} · ${e(job.location || job.city || 'Location not listed')}</p></div>${matched?`<strong class="jm-score">${e(score(job.score))}</strong>`:''}</div><p>${e(job.source || 'Source not listed')} · ${e(job.remote_type || 'Work mode not supplied')}</p><p class="job-freshness">${freshness(job)}</p><p>${e(words(job.skills) || 'Skills not listed')}</p>${matched?`<p><b>Matched skills:</b> ${e(words(job.matched_skills) || 'None identified')}</p><p><b>Not identified in your profile:</b> ${e(words(job.missing_skills) || 'None identified')} — verify and correct your profile.</p><p>${e(job.reason || '')}</p><details><summary>Score breakdown</summary>${structured(job.breakdown || {})}</details>`:''}${url?`<a href="${e(url)}" target="_blank" rel="noopener noreferrer">View source listing ↗</a>`:'<span class="form-status">No secure source link available</span>'}</article>`;
     }).join('');
   }
   function profileEditor() {
@@ -31,7 +35,7 @@
     return `<section class="panel"><h2>Review your extracted profile</h2><p class="panel-help">Extraction can miss details. Correct skills, titles and experience manually before matching. A skill not identified here does not mean you lack it.</p><fieldset ${state.busy?'disabled':''}><div class="jm-fields"><label>Skills (comma-separated)<textarea data-jm-field="skills">${e(words(p.skills))}</textarea></label><label>Titles (comma-separated)<textarea data-jm-field="titles">${e(words(p.titles))}</textarea></label><label>Years of experience<input data-jm-field="years_experience" type="number" min="0" max="80" step="0.5" value="${e(p.years_experience ?? '')}"></label></div></fieldset><details><summary>Extracted education, projects and redacted text</summary>${structured({education:p.education,projects:p.projects,redacted_text:p.redacted_text})}</details><div class="jm-actions">${button('nav-matches','Continue to My Matches',true)}</div></section>`;
   }
   function uploadView() {
-    return `<section class="panel"><h2>Upload or paste your resume</h2><p class="panel-help">PDF or DOCX, up to 5 MiB. You can also paste plain text. Parsing does not call an external AI provider.</p><fieldset ${state.busy?'disabled':''}><label for="jm-text">Resume text</label><textarea id="jm-text" data-jm-input="text" rows="9" placeholder="Paste your resume text here…">${e(state.text)}</textarea><div class="jm-actions">${button('parse-text','Parse pasted text',true,!state.text.trim() || !!state.busy)}</div><label for="jm-file">Or choose a PDF / DOCX file</label><input id="jm-file" type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"><p id="jm-file-label" class="form-status">${e(state.file?.name || 'No file selected')}</p>${button('parse-file','Parse selected file',true,!state.file || !!state.busy)}</fieldset></section>${profileEditor()}`;
+     return `<section class="panel"><h2>Upload or paste your resume</h2><p class="panel-help">PDF or DOCX, up to 5 MiB. You can also paste plain text. Resume processing is transient and parsing stays local to this requested session; external AI is opt-in only.</p><fieldset ${state.busy?'disabled':''}><label for="jm-text">Resume text</label><textarea id="jm-text" data-jm-input="text" rows="9" placeholder="Paste your resume text here…">${e(state.text)}</textarea><div class="jm-actions">${button('parse-text','Parse pasted text',true,!state.text.trim() || !!state.busy)}</div><label for="jm-file">Or choose a PDF / DOCX file</label><input id="jm-file" type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"><p id="jm-file-label" class="form-status">${e(state.file?.name || 'No file selected')}</p>${button('parse-file','Parse selected file',true,!state.file || !!state.busy)}</fieldset></section>${profileEditor()}`;
   }
   function matchControls() {
     return `<section class="panel"><h2>Compare your profile with current jobs</h2><p class="panel-help">Baseline matching uses your reviewed profile across all configured sources. Local semantic matching runs without an API key; scores indicate relative fit, not hiring probability.</p>${profileReady()?`<p>${e(words(state.profile.skills) || 'No skills identified — review your profile first.')}</p><fieldset ${state.busy?'disabled':''}><label>Match job source<select data-jm-input="matchSource">${sourceOptions(state.matchSource)}</select></label><label class="jm-check"><input type="checkbox" data-jm-input="embeddings" ${state.embeddings?'checked':''}> Use local semantic matching (no API key)</label>${button('match','Find my matches',true,!!state.busy)}</fieldset>`:`${empty('No parsed resume yet. Parse and review a resume to find matches.')}${button('nav-upload','Upload Resume',true)}`}</section>`;
@@ -49,14 +53,15 @@
   function catalogView() {
     const c = state.catalog;
     const filters = `<label>Source<select data-jm-input="source">${sourceOptions(state.source)}</select></label><label>Company<input data-jm-input="company" maxlength="200" value="${e(state.company)}" placeholder="e.g. Meesho"></label><label>Role<input data-jm-input="role" maxlength="200" value="${e(state.role)}" placeholder="e.g. Data Science"></label><label>All these skills<input data-jm-input="skillQuery" maxlength="500" value="${e(state.skillQuery)}" placeholder="Python, SQL"></label>`;
-    return `<section class="panel"><h2>Bengaluru Tech Jobs</h2><p class="panel-help">Jobs from tracked Greenhouse, Lever and Ashby company boards in one feed. Upload your resume to discover matching jobs, suitable roles and skills to develop. Coverage is limited to configured companies, not every Bengaluru opening.</p><div class="jm-actions">${button('nav-upload','Upload resume →',true)}</div><form id="jm-search"><fieldset ${state.catalogBusy?'disabled':''}><div class="jm-search"><label for="jm-query">Search title, company or description<input id="jm-query" data-jm-input="query" type="search" maxlength="200" value="${e(state.query)}" placeholder="Python, engineer, company…"></label><label for="jm-scope">Job collection<select id="jm-scope"><option value="bengaluru" ${state.scope==='bengaluru'?'selected':''}>Bengaluru tech jobs</option><option value="ai" ${state.scope==='ai'?'selected':''}>Bengaluru AI jobs</option></select></label></div><div class="jm-fields">${filters}</div><div class="jm-actions"><button class="primary" type="submit">Search / apply filters</button>${button('reset-filters','Clear filters')}</div></fieldset></form><div role="status" aria-live="polite">${state.catalogBusy?'Loading current listings…':state.catalogError?e(state.catalogError):c?`${e(c.total ?? arr(c.items).length)} jobs · Page ${e(state.page)}`:'Ready to search.'}</div>${state.catalogBusy?'':cards(c?.items) || (!state.catalogError?empty('No jobs found for this search. Try a broader query.'):'')}<div class="jm-actions">${button('previous','Previous',false,state.catalogBusy || state.page<=1)}${button('next','Next',false,state.catalogBusy || !c || state.page*Number(c.page_size || 20)>=Number(c.total || 0))}${button('catalog-refresh','Refresh listings',false,state.catalogBusy)}</div></section>`;
+    return `<section class="panel"><h2>Bengaluru Tech Jobs</h2><p class="panel-help"><strong>Current postings only by default:</strong> older than the configured ${e(state.freshnessDays)}-day freshness window, or without a posting date, are hidden. Jobs come from tracked Greenhouse, Lever and Ashby company boards; coverage is limited to configured companies, not every Bengaluru opening. ${e(scopeMessage())}</p><div class="jm-actions">${button('nav-upload','Upload resume →',true)}</div><form id="jm-search"><fieldset ${state.catalogBusy?'disabled':''}><div class="jm-search"><label for="jm-query">Search title, company or description<input id="jm-query" data-jm-input="query" type="search" maxlength="200" value="${e(state.query)}" placeholder="Python, engineer, company…"></label><label for="jm-scope">Job collection<select id="jm-scope"><option value="bengaluru" ${state.scope==='bengaluru'?'selected':''}>Bengaluru tech jobs</option><option value="ai" ${state.scope==='ai'?'selected':''}>Bengaluru AI jobs</option></select></label></div><label class="jm-check stale-toggle"><input type="checkbox" data-jm-input="includeStale" ${state.includeStale?'checked':''}> Include older or unknown-date listings (opt in)</label><div class="jm-fields">${filters}</div><div class="jm-actions"><button class="primary" type="submit">Search / apply filters</button>${button('reset-filters','Clear filters')}</div></fieldset></form><div role="status" aria-live="polite">${state.catalogBusy?(state.includeStale?'Loading current and older listings…':'Loading current listings…'):state.catalogError?e(state.catalogError):c?`${e(c.total ?? arr(c.items).length)} jobs · ${state.includeStale?'including older/unknown-date listings':'current-only'} · Page ${e(state.page)}`:'Ready to search.'}</div>${state.catalogBusy?'':cards(c?.items) || (!state.catalogError?empty('No jobs found for this search. Try a broader query.'):'')}<div class="jm-actions">${button('previous','Previous',false,state.catalogBusy || state.page<=1)}${button('next','Next',false,state.catalogBusy || !c || state.page*Number(c.page_size || 20)>=Number(c.total || 0))}${button('catalog-refresh','Refresh listings',false,state.catalogBusy)}</div></section>`;
   }
   function paint() {
     if (!views.some(([name])=>name===view)) return;
     paintedView = view;
     $('page-title').textContent = view;
     $('role-count').textContent = state.catalog ? String(state.catalog.total ?? arr(state.catalog.items).length) : '—';
-    $('view-root').innerHTML = `<div class="jobmatch"><div class="jm-session"><p>Resume data stays in this browser tab's memory, with transient server processing. External providers are used only with your explicit opt-in. Contact redaction is best effort; review extracted text before opting in.</p>${button('clear','Clear / delete session')}</div><p class="jm-status" role="status" aria-live="polite">${e(state.busy ? `${state.busy}…` : state.notice)}</p>${state.error?`<p class="jm-error" role="alert">${e(state.error)}</p>`:''}${view==='Bengaluru Jobs'?catalogView():view==='Upload Resume'?uploadView():view==='Resume Suggestions'?suggestionsView():resultsView()}</div>`;
+     $('view-root').innerHTML = `<div class="jobmatch"><div class="jm-session"><p>Resume processing is transient: resume text and files stay in this browser tab's memory and are processed only for the requested action. External AI is opt-in and never used automatically. Contact redaction is best effort; review extracted text before opting in.</p>${button('clear','Clear / delete session')}</div><p class="jm-status" role="status" aria-live="polite">${e(state.busy ? `${state.busy}…` : state.notice)}</p>${state.error?`<p class="jm-error" role="alert">${e(state.error)}</p>`:''}${view==='Bengaluru Jobs'?catalogView():view==='Upload Resume'?uploadView():view==='Resume Suggestions'?suggestionsView():resultsView()}</div>`;
+     const scopeBanner=$('scope-banner');if(scopeBanner)scopeBanner.innerHTML=e(view==='Bengaluru Jobs'?scopeMessage():'Bengaluru Jobs is a separate Bengaluru-only feed; India Insights is the broader configured India dataset.');
     toggleNav();
   }
   async function request(path,options,external=false) {
@@ -73,11 +78,15 @@
     const id = ++catalogRequest, epoch = generation;
     state.catalogBusy = true; state.catalogError = ''; paint();
     try {
-      const data = await request(`/jobs/${state.scope}?${new URLSearchParams({q:state.query,source:state.source,company:state.company,role:state.role,skills:state.skillQuery,page:String(state.page),page_size:'20'})}`);
+       const data = await request(`/jobs/${state.scope}?${new URLSearchParams({q:state.query,source:state.source,company:state.company,role:state.role,skills:state.skillQuery,page:String(state.page),page_size:'20',include_stale:String(state.includeStale)})}`);
       if (id !== catalogRequest || epoch !== generation) return;
       state.catalog = data;
     } catch (error) { if (id !== catalogRequest || epoch !== generation) return; state.catalog = null; state.catalogError = error.message || 'Listings are unavailable. Please retry.'; }
     if (id === catalogRequest && epoch === generation) { state.catalogBusy = false; paint(); }
+  }
+  async function loadMetadata() {
+    try { const data = await request('/data-quality'); state.metadata = data.metadata || data; state.freshnessDays = Number(data.freshness_cutoff_days ?? state.metadata.freshness_cutoff_days) || 90; if (paintedView === 'Bengaluru Jobs') paint(); }
+    catch (_) { /* Coverage metadata is supplementary; listings remain usable. */ }
   }
   async function run(kind) {
     if (state.busy) return;
@@ -134,8 +143,9 @@
       state.matches=null; state.suggestions=null; state.matchConsent=false; state.suggestionConsent=false;
     }
   });
-  $('view-root').addEventListener('change',event => {
-    if (event.target.id==='jm-scope') { state.scope=event.target.value; state.page=1; state.catalog=null; loadCatalog(); }
+   $('view-root').addEventListener('change',event => {
+     if (event.target.id==='jm-scope') { state.scope=event.target.value; state.page=1; state.catalog=null; loadCatalog(); }
+     if (event.target.dataset.jmInput==='includeStale') { state.includeStale=!!event.target.checked; state.page=1; state.catalog=null; loadCatalog(); }
     if (event.target.id!=='jm-file') return;
     const file = event.target.files?.[0]; state.file=null; state.error='';
     if (file && (!/\.(pdf|docx)$/i.test(file.name) || file.size>5*1024*1024 || file.size===0)) state.error='Choose a non-empty PDF or DOCX file no larger than 5 MiB.';
@@ -151,12 +161,13 @@
     else if (action==='nav-matches') setView('My Matches');
     else if (action==='previous' || action==='next') { state.page += action==='next'?1:-1; loadCatalog(); }
     else if (action==='catalog-refresh') loadCatalog();
-    else if (action==='reset-filters') { Object.assign(state,{query:'',source:'',company:'',role:'',skillQuery:'',page:1}); loadCatalog(); }
+     else if (action==='reset-filters') { Object.assign(state,{query:'',source:'',company:'',role:'',skillQuery:'',page:1}); loadCatalog(); }
     else run(action);
   });
   // setup() has already registered the nav's delegated click listener.
   // Replace only its children; keep that listener and preserve the five legacy views.
   $('navigation').innerHTML = NAV.map(([name,icon])=>`<button type="button" data-view="${e(name)}"><i>${e(icon)}</i>${e(name)}</button>`).join('');
   setView('Bengaluru Jobs');
-  loadCatalog();
-})();
+   loadCatalog();
+   loadMetadata();
+ })();

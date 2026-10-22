@@ -173,7 +173,7 @@ def test_jobs_serialize_missing_salary_source_url_and_nat_as_null(monkeypatch):
     }]))
     monkeypatch.setattr(api_main, "load_jobs", lambda: jobs)
 
-    response = client.get("/api/jobs")
+    response = client.get("/api/jobs", params={"include_stale": "true"})
 
     assert response.status_code == 200
     item = response.json()["items"][0]
@@ -192,9 +192,49 @@ def test_date_filters_are_nat_safe_and_reversed_ranges_are_rejected(monkeypatch)
     ]))
     monkeypatch.setattr(api_main, "load_jobs", lambda: jobs)
 
-    filtered = client.get("/api/jobs", params={"start_date": "2026-01-01", "end_date": "2026-01-31"})
-    reversed_range = client.get("/api/jobs", params={"start_date": "2026-02-01", "end_date": "2026-01-01"})
+    filtered = client.get("/api/jobs", params={"start_date": "2026-01-01", "end_date": "2026-01-31", "include_stale": "true"})
+    reversed_range = client.get("/api/jobs", params={"start_date": "2026-02-01", "end_date": "2026-01-01", "include_stale": "true"})
 
     assert filtered.status_code == 200
     assert [item["job_id"] for item in filtered.json()["items"]] == ["dated"]
     assert reversed_range.status_code == 422
+
+
+def test_stale_and_unknown_posted_jobs_are_current_only_by_default(monkeypatch):
+    jobs = prepare_jobs(pd.DataFrame([
+        {"job_id": "fresh", "title": "Engineer", "company": "Example", "location": "Pune", "source": "Feed", "source_url": "https://example.com/fresh", "posted_date": "2026-10-01", "collected_at": "2026-10-20T00:00:00Z", "description": "Python"},
+        {"job_id": "stale-2023", "title": "Engineer", "company": "Example", "location": "Pune", "source": "Feed", "source_url": "https://example.com/stale", "posted_date": "2023-01-01", "collected_at": "2026-10-20T00:00:00Z", "description": "Python"},
+        {"job_id": "unknown", "title": "Engineer", "company": "Example", "location": "Pune", "source": "Feed", "source_url": "https://example.com/unknown", "posted_date": None, "collected_at": "2026-10-20T00:00:00Z", "description": "Python"},
+    ]))
+    monkeypatch.setattr(api_main, "load_jobs", lambda: jobs)
+
+    current = client.get("/api/jobs", params={"page_size": 100})
+    assert current.status_code == 200
+    assert [item["job_id"] for item in current.json()["items"]] == ["fresh"]
+    assert current.json()["items"][0]["freshness_status"] == "current"
+    assert current.json()["items"][0]["last_verified"]
+    assert current.json()["items"][0]["collected_at"]
+
+    all_jobs = client.get("/api/jobs", params={"page_size": 100, "include_stale": "true"})
+    assert [item["job_id"] for item in all_jobs.json()["items"]] == ["fresh", "stale-2023", "unknown"]
+    by_id = {item["job_id"]: item for item in all_jobs.json()["items"]}
+    assert by_id["stale-2023"]["freshness_status"] == "stale"
+    assert by_id["stale-2023"]["age_days"] > 90
+    assert by_id["unknown"]["freshness_status"] == "unknown"
+    assert by_id["unknown"]["age_days"] is None
+
+
+def test_data_quality_reports_freshness_and_dataset_scope(monkeypatch):
+    jobs = prepare_jobs(pd.DataFrame([
+        {"job_id": "fresh", "title": "Engineer", "company": "Example", "location": "Pune", "source": "Feed", "source_url": "https://example.com/fresh", "posted_date": "2026-10-01", "description": "Python"},
+        {"job_id": "stale", "title": "Engineer", "company": "OtherCo", "location": "Bengaluru", "source": "Other", "source_url": "https://example.com/stale", "posted_date": "2023-01-01", "description": "Python"},
+    ]))
+    monkeypatch.setattr(api_main, "load_jobs", lambda: jobs)
+
+    body = client.get("/api/data-quality").json()
+    assert body["freshness_cutoff_days"] == 90
+    assert body["freshness_cutoff_date"] == (pd.Timestamp.today().date() - pd.Timedelta(days=90)).isoformat()
+    assert body["freshness_counts"] == {"current": 1, "stale": 1, "unknown": 0}
+    assert body["dataset_scope"]["row_count"] == 2
+    assert body["dataset_scope"]["company_count"] == 2
+    assert set(body["dataset_scope"]["sources"]) == {"Feed", "Other"}

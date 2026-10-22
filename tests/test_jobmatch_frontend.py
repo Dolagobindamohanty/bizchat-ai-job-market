@@ -192,3 +192,17 @@ def test_multisource_filters_and_match_source_contract():
       assert.equal(calls.filter(call=>call.path.endsWith('/resume/match')).at(-1).body.source,'ashby');
       input('matchSource','lever');assert(!root.innerHTML.includes('70.0 / 100'));
     """)
+
+
+def test_bengaluru_stale_opt_in_is_explicit_and_sent_to_api():
+    run_scenario(r"""
+      await tick();
+      assert(root.innerHTML.includes('Current postings only by default'));
+      assert(root.innerHTML.includes('Include older or unknown-date listings'));
+      const stale=new Element('input');stale.dataset.jmInput='includeStale';stale.type='checkbox';stale.checked=true;root.emit('input',stale);root.emit('change',stale);await tick();
+      const request=calls.filter(call=>call.path.endsWith('/jobs/bengaluru')).at(-1);
+      assert.equal(new URL(request.url).searchParams.get('include_stale'),'true');
+      stale.checked=false;root.emit('input',stale);root.emit('change',stale);await tick();
+      const current=new URL(calls.filter(call=>call.path.endsWith('/jobs/bengaluru')).at(-1).url);
+      assert.equal(current.searchParams.get('include_stale'),'false');
+    """)

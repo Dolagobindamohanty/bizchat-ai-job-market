@@ -147,3 +147,25 @@ def test_multisource_listing_and_resume_matching():
     result = client.post("/api/resume/match", json={"profile": profile, "source": "ashby"}).json()
     assert result["total"] == 1
     assert result["items"][0]["source"] == "ashby"
+
+
+def test_bengaluru_discovery_excludes_2023_jobs_until_include_stale():
+    rows = pd.DataFrame([
+        {"job_id": "fresh", "title": "AI Engineer", "company": "CurrentCo", "location": "Bengaluru", "skills": ["Python"], "description": "AI", "posted_date": "2026-10-01", "collected_at": "2026-10-20T00:00:00Z"},
+        {"job_id": "stale", "title": "AI Engineer", "company": "OldCo", "location": "Bengaluru", "skills": ["Python"], "description": "AI", "posted_date": "2023-01-01", "collected_at": "2026-10-20T00:00:00Z"},
+    ])
+    app = FastAPI()
+    app.include_router(jobmatch.create_jobmatch_router(lambda: rows))
+    client = TestClient(app)
+
+    current = client.get("/api/jobs/bengaluru")
+    assert current.json()["total"] == 1
+    assert current.json()["items"][0]["job_id"] == "fresh"
+    assert current.json()["items"][0]["freshness_status"] == "current"
+
+    all_jobs = client.get("/api/jobs/ai", params={"include_stale": "true"})
+    assert all_jobs.json()["total"] == 2
+    by_id = {item["job_id"]: item for item in all_jobs.json()["items"]}
+    assert by_id["stale"]["freshness_status"] == "stale"
+    assert by_id["stale"]["age_days"] > 90
+    assert by_id["stale"]["last_verified"]

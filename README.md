@@ -86,6 +86,12 @@ GET /api/data-quality
 POST /api/chat/query
 ```
 
+Public job and analytics results are current-only by default: listings without a
+posted date or older than `BIZCHAT_FRESHNESS_DAYS` (90 by default) are omitted.
+Pass `include_stale=true` on supported query endpoints, or the corresponding
+request field, to inspect older and unknown-date records. Listing responses
+include `freshness_status`, `age_days`, and collection verification timestamps.
+
 The chat endpoint is intentionally read-only and allowlisted: it maps supported natural-language questions to known analytics intents and never executes arbitrary SQL.
 
 The recommendations endpoint additionally accepts repeated `current_skills` values plus `target_role`, `years_experience`, and `desired_salary_lpa`. Example:

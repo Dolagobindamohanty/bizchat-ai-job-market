@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 import ipaddress
 import json
 import os
@@ -19,7 +19,9 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from pydantic import BaseModel, Field
 
-from bizchat.analytics import prepare_jobs, recommendations, skill_demand, top_cities, roles_over_time, salary_distribution_by_role, explode_cities
+from bizchat.analytics import (current_only, freshness_counts, freshness_cutoff_days, prepare_jobs,
+                               recommendations, skill_demand, top_cities, roles_over_time,
+                               salary_distribution_by_role, explode_cities, with_freshness)
 from bizchat.locations import city_tags, matches_city
 from collector.validate import validation_report
 from database.repository import DatabaseRepository, get_repository
@@ -111,6 +113,10 @@ class JobListing(BaseModel):
     posted_date: date | None
     description: str | None = None
     skills: list[str]
+    freshness_status: str
+    age_days: int | None
+    last_verified: str | None = None
+    collected_at: str | None = None
 
 
 class JobsResponse(BaseModel):
@@ -128,10 +134,15 @@ class AnalyticsMetadata(BaseModel):
     oldest_posted_date: date | None
     newest_posted_date: date | None
     data_quality: dict[str, int | bool]
+    freshness_cutoff_days: int
+    freshness_cutoff_date: date
+    freshness_counts: dict[str, int]
+    dataset_scope: dict[str, object]
 
 
 class ChatRequest(BaseModel):
     question: str = Field(min_length=1, max_length=500)
+    include_stale: bool = False
 
 
 class ChatResponse(BaseModel):
@@ -158,6 +169,7 @@ class ResumeMatchRequest(BaseModel):
 class SemanticSearchRequest(BaseModel):
     query: str = Field(min_length=1, max_length=500)
     limit: int = Field(default=20, ge=1, le=100)
+    include_stale: bool = False
 
 
 class AlertPreviewRequest(BaseModel):
@@ -334,10 +346,11 @@ def filtered_jobs(
     max_salary_lpa: float | None = None,
     remote_type: str | None = None,
     skill: str | None = None,
+    include_stale: bool = False,
 ) -> pd.DataFrame:
     if start_date and end_date and start_date > end_date:
         raise HTTPException(status_code=422, detail="start_date must be on or before end_date")
-    jobs = load_jobs()
+    jobs = current_only(load_jobs(), include_stale=include_stale)
     if "cities" not in jobs:
         jobs = jobs.assign(cities=jobs["location"].map(city_tags))
     if city:
@@ -373,6 +386,7 @@ FilterMinSalary = Annotated[float | None, Query(ge=0)]
 FilterMaxSalary = Annotated[float | None, Query(ge=0)]
 FilterRemote = Annotated[str | None, Query(description="Remote, Hybrid, On-site, etc.")]
 FilterSkill = Annotated[str | None, Query(description="Canonical skill")]
+FilterIncludeStale = Annotated[bool, Query(description="Include listings older than the freshness cutoff or without a posted date")]
 
 
 def filtered_jobs_dependency(
@@ -381,9 +395,10 @@ def filtered_jobs_dependency(
     role_type: FilterRole = None, experience_level: FilterExperience = None,
     min_salary_lpa: FilterMinSalary = None, max_salary_lpa: FilterMaxSalary = None,
     remote_type: FilterRemote = None, skill: FilterSkill = None,
+    include_stale: FilterIncludeStale = False,
 ) -> pd.DataFrame:
     return filtered_jobs(city, source, start_date, end_date, role_type, experience_level,
-                         min_salary_lpa, max_salary_lpa, remote_type, skill)
+                         min_salary_lpa, max_salary_lpa, remote_type, skill, include_stale)
 
 
 @app.get("/api/health")
@@ -485,7 +500,12 @@ def job_listings(
     )
     total = len(jobs)
     page_jobs = jobs.iloc[(page - 1) * page_size : page * page_size]
-    items = [JobListing(**json_safe({**row, "job_id": str(row["job_id"]), "posted_date": row["posted_date"].date() if pd.notna(row["posted_date"]) else None, "skills": row["skills"]})) for row in page_jobs.to_dict(orient="records")]
+    items = []
+    for row in page_jobs.to_dict(orient="records"):
+        payload = json_safe({**row, "job_id": str(row["job_id"]),
+                             "posted_date": row["posted_date"].date() if pd.notna(row["posted_date"]) else None,
+                             "skills": row["skills"]})
+        items.append(JobListing(**payload))
     return JobsResponse(items=items, total=total, page=page, page_size=page_size)
 
 
@@ -504,8 +524,32 @@ def _static_metadata(data_path: str, modified_ns: int, file_size: int) -> dict:
 
 
 def _metadata(jobs: pd.DataFrame) -> AnalyticsMetadata:
+    dataset = with_freshness(load_jobs())
     stat = DATA_PATH.stat()
-    return AnalyticsMetadata(**_static_metadata(str(DATA_PATH), stat.st_mtime_ns, stat.st_size), filtered_rows=len(jobs))
+    static = _static_metadata(str(DATA_PATH), stat.st_mtime_ns, stat.st_size)
+    collected = dataset["collected_at"].dropna() if "collected_at" in dataset else pd.Series(dtype="datetime64[ns]")
+    posted = dataset["posted_date"].dropna()
+    static.update(
+        dataset_rows=len(dataset),
+        source_count=int(dataset["source"].nunique()),
+        latest_collected_at=None if collected.empty else collected.max().isoformat(),
+        oldest_posted_date=None if posted.empty else posted.min().date(),
+        newest_posted_date=None if posted.empty else posted.max().date(),
+    )
+    counts = freshness_counts(dataset)
+    cutoff_days = freshness_cutoff_days()
+    scope = {
+        "scope": "configured dataset",
+        "row_count": len(dataset),
+        "source_count": int(dataset["source"].nunique()),
+        "company_count": int(dataset["company"].nunique()),
+        "sources": sorted(str(value) for value in dataset["source"].dropna().unique()),
+        "location_count": int(dataset["location"].nunique()),
+        "locations": sorted(str(value) for value in dataset["location"].dropna().unique()),
+    }
+    return AnalyticsMetadata(**static, filtered_rows=len(jobs), freshness_cutoff_days=cutoff_days,
+                             freshness_cutoff_date=date.today() - timedelta(days=cutoff_days), freshness_counts=counts,
+                             dataset_scope=scope)
 
 
 @app.get("/api/analytics/top-cities")
@@ -537,7 +581,12 @@ def analytics_salary_distribution(jobs: pd.DataFrame = Depends(filtered_jobs_dep
 @app.get("/api/data-quality")
 def data_quality() -> dict:
     jobs = load_jobs()
-    return json_safe({"metadata": _metadata(jobs).model_dump()})
+    metadata = _metadata(jobs).model_dump()
+    return json_safe({"metadata": metadata,
+                      "freshness_cutoff_days": metadata["freshness_cutoff_days"],
+                      "freshness_cutoff_date": metadata["freshness_cutoff_date"],
+                      "freshness_counts": metadata["freshness_counts"],
+                      "dataset_scope": metadata["dataset_scope"]})
 
 
 CHAT_INTENTS = {
@@ -559,7 +608,7 @@ def chat_query(request: ChatRequest) -> ChatResponse:
                    if re.search(rf"\b{re.escape(phrase)}\b", normalized)), None)
     if intent is None:
         return ChatResponse(supported=False, message="Unsupported question. Ask about top cities, top skills, roles over time, or salary distribution by role.")
-    jobs = load_jobs()
+    jobs = current_only(load_jobs(), include_stale=request.include_stale)
     if intent == "top_cities":
         result = top_cities(jobs).to_dict(orient="records")
     elif intent == "top_skills":
@@ -665,22 +714,23 @@ def match_resume(request: ResumeMatchRequest) -> dict:
 
 
 @app.get("/api/trends/forecast")
-def trends_forecast() -> dict:
+def trends_forecast(include_stale: bool = False) -> dict:
     """Return week-over-week demand and a deterministic next-period baseline."""
-    return json_safe(trend_forecast(load_jobs()))
+    return json_safe(trend_forecast(current_only(load_jobs(), include_stale=include_stale)))
 
 
 @app.get("/api/search/semantic", response_model=SemanticSearchResponse)
-def semantic_search_get(q: Annotated[str, Query(min_length=1, max_length=500)], limit: Annotated[int, Query(ge=1, le=100)] = 20) -> SemanticSearchResponse:
-    return SemanticSearchResponse(query=q, integration="deterministic local token/skill relevance; pgvector integration boundary documented, not enabled", items=json_safe(semantic_search(q, load_jobs(), limit)))
+def semantic_search_get(q: Annotated[str, Query(min_length=1, max_length=500)], limit: Annotated[int, Query(ge=1, le=100)] = 20, include_stale: bool = False) -> SemanticSearchResponse:
+    return SemanticSearchResponse(query=q, integration="deterministic local token/skill relevance; pgvector integration boundary documented, not enabled", items=json_safe(semantic_search(q, current_only(load_jobs(), include_stale=include_stale), limit)))
 
 
 @app.post("/api/search/semantic", response_model=SemanticSearchResponse)
 def semantic_search_post(request: SemanticSearchRequest) -> SemanticSearchResponse:
-    return SemanticSearchResponse(query=request.query, integration="deterministic local token/skill relevance; pgvector integration boundary documented, not enabled", items=json_safe(semantic_search(request.query, load_jobs(), request.limit)))
+    return SemanticSearchResponse(query=request.query, integration="deterministic local token/skill relevance; pgvector integration boundary documented, not enabled", items=json_safe(semantic_search(request.query, current_only(load_jobs(), include_stale=request.include_stale), request.limit)))
 
 
 @app.post("/api/alerts/preview")
-def alerts_preview(request: AlertPreviewRequest) -> dict:
-    filters = request.filters or {key: value for key, value in request.model_extra.items() if key != "filters"}
-    return json_safe(alert_preview(filters, load_jobs()))
+def alerts_preview(request: AlertPreviewRequest, include_stale: bool = False) -> dict:
+    filters = dict(request.filters or {key: value for key, value in request.model_extra.items() if key != "filters"})
+    include_stale = include_stale or bool(filters.pop("include_stale", False))
+    return json_safe(alert_preview(filters, current_only(load_jobs(), include_stale=include_stale)))
