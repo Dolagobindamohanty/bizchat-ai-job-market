@@ -13,7 +13,7 @@
       "board_token": "stripe",
       "company": "Stripe",
       "status": "ok",
-      "jobs": 45,
+      "jobs": 46,
       "error": null
     },
     {
@@ -21,7 +21,7 @@
       "board_token": "databricks",
       "company": "Databricks",
       "status": "ok",
-      "jobs": 90,
+      "jobs": 88,
       "error": null
     },
     {
@@ -37,7 +37,7 @@
       "board_token": "airbnb",
       "company": "Airbnb",
       "status": "ok",
-      "jobs": 6,
+      "jobs": 9,
       "error": null
     },
     {
@@ -53,7 +53,7 @@
       "board_token": "meesho",
       "company": "Meesho",
       "status": "ok",
-      "jobs": 56,
+      "jobs": 55,
       "error": null
     },
     {
@@ -61,7 +61,7 @@
       "board_token": "sarvam",
       "company": "Sarvam AI",
       "status": "ok",
-      "jobs": 42,
+      "jobs": 44,
       "error": null
     },
     {
@@ -73,6 +73,6 @@
       "error": null
     }
   ],
-  "jobs": 262,
+  "jobs": 265,
   "complete": true
 }
