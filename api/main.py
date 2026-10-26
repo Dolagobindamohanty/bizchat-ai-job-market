@@ -519,8 +519,9 @@ def _static_metadata(data_path: str, modified_ns: int, file_size: int) -> dict:
             "latest_collected_at": None if collected.dropna().empty else collected.max().isoformat(),
             "oldest_posted_date": None if jobs["posted_date"].dropna().empty else jobs["posted_date"].min().date(),
             "newest_posted_date": None if jobs["posted_date"].dropna().empty else jobs["posted_date"].max().date(),
-            "data_quality": {"deployment_safe": report.deployment_safe, "duplicate_key_count": report.duplicate_key_count,
-                             "missing_source_urls": report.missing_source_urls, "invalid_timestamps": report.invalid_timestamps}}
+             "data_quality": {"deployment_safe": report.deployment_safe, "duplicate_key_count": report.duplicate_key_count,
+                              "missing_source_urls": report.missing_source_urls, "invalid_source_urls": report.invalid_source_urls,
+                              "invalid_keys": report.invalid_keys, "invalid_timestamps": report.invalid_timestamps}}
 
 
 def _metadata(jobs: pd.DataFrame) -> AnalyticsMetadata:
