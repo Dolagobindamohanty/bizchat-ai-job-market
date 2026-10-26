@@ -39,6 +39,26 @@
       </main>
     </div>
     <div id="account-modal" class="account-modal" hidden role="dialog" aria-modal="true" aria-labelledby="account-title"><div class="account-card"><button class="modal-close" id="account-close" aria-label="Close account dialog">×</button><h2 id="account-title">Your account</h2><p id="auth-status" class="form-status" role="status"></p><form id="auth-form"><label for="auth-email">Email address</label><input id="auth-email" type="email" autocomplete="email" required placeholder="you@example.com"><button class="primary" type="submit" id="auth-submit">Send magic link</button></form><button class="secondary" id="sign-out" hidden>Sign out</button><div id="saved-workspace" class="saved-workspace"></div></div></div>
+    <script>
+      (() => {
+        const scope = new URLSearchParams(window.location.search).get('scope');
+        const india = scope === 'india';
+        const ai = scope === 'ai';
+        if (!india && !ai) return;
+        const title = document.getElementById('page-title');
+        const subhead = document.querySelector('.subhead');
+        const banner = document.getElementById('scope-banner');
+        const dataBanner = document.getElementById('data-banner');
+        const bengaluruTab = document.getElementById('scope-bengaluru');
+        const indiaTab = document.getElementById('scope-india');
+        if (title) title.textContent = india ? 'India Insights' : 'Bengaluru AI Jobs';
+        if (subhead) subhead.innerHTML = `Current postings only · signals from <span id="role-count">—</span> ${india ? 'India' : 'Bengaluru AI'} roles.`;
+        if (banner) banner.textContent = india ? 'India Insights · configured public boards only — not the full Indian job market.' : 'Bengaluru AI Jobs · current postings from configured public boards only.';
+        if (dataBanner) dataBanner.textContent = india ? 'Loading current India job listings…' : 'Loading current Bengaluru AI listings…';
+        if (bengaluruTab) { bengaluruTab.classList.toggle('active', !india); bengaluruTab.setAttribute('aria-selected', String(!india)); }
+        if (indiaTab) { indiaTab.classList.toggle('active', india); indiaTab.setAttribute('aria-selected', String(india)); }
+      })();
+    </script>
     <script src="config.js"></script>
     <script src="app.js"></script>
     <script src="jobmatch.js"></script>
