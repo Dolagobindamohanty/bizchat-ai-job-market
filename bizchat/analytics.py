@@ -10,7 +10,7 @@ import pandas as pd
 from bizchat.locations import city_tags, matches_city
 
 
-DEFAULT_FRESHNESS_DAYS = 90
+DEFAULT_FRESHNESS_DAYS = 30
 
 
 def freshness_cutoff_days() -> int:

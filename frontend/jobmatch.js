@@ -3,7 +3,7 @@
   'use strict';
   const views = [['Bengaluru Jobs','⌖'],['Upload Resume','↑'],['My Matches','◎'],['Role Fit','◇'],['Skill Gaps','✦'],['Resume Suggestions','↗']];
   NAV.unshift(...views);
-  const state = {text:'',file:null,profile:null,matches:null,suggestions:null,target:'',embeddings:false,lastMatchEmbeddings:false,matchConsent:false,suggestionConsent:false,busy:'',error:'',notice:'',query:'',source:'',company:'',role:'',skillQuery:'',matchSource:'',scope:'bengaluru',includeStale:false,freshnessDays:90,metadata:null,page:1,catalog:null,catalogBusy:false,catalogError:''};
+  const state = {text:'',file:null,profile:null,matches:null,suggestions:null,target:'',embeddings:false,lastMatchEmbeddings:false,matchConsent:false,suggestionConsent:false,busy:'',error:'',notice:'',query:'',source:'',company:'',role:'',skillQuery:'',matchSource:'',scope:'bengaluru',includeStale:false,freshnessDays:30,metadata:null,page:1,catalog:null,catalogBusy:false,catalogError:''};
   let generation = 0, catalogRequest = 0, paintedView = '';
   const e = escapeHTML, arr = value => Array.isArray(value) ? value : [], words = value => arr(value).join(', ');
   const split = value => value.split(',').map(x => x.trim()).filter(Boolean);
@@ -85,7 +85,7 @@
     if (id === catalogRequest && epoch === generation) { state.catalogBusy = false; paint(); }
   }
   async function loadMetadata() {
-    try { const data = await request('/data-quality'); state.metadata = data.metadata || data; state.freshnessDays = Number(data.freshness_cutoff_days ?? state.metadata.freshness_cutoff_days) || 90; if (paintedView === 'Bengaluru Jobs') paint(); }
+    try { const data = await request('/data-quality'); state.metadata = data.metadata || data; state.freshnessDays = Number(data.freshness_cutoff_days ?? state.metadata.freshness_cutoff_days) || 30; if (paintedView === 'Bengaluru Jobs') paint(); }
     catch (_) { /* Coverage metadata is supplementary; listings remain usable. */ }
   }
   async function run(kind) {

@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 
 import api.main as api_main
 from api.main import app, load_jobs
-from bizchat.analytics import prepare_jobs
+from bizchat.analytics import current_only, prepare_jobs
 
 
 client = TestClient(app)
@@ -16,7 +16,7 @@ def test_overview_and_skill_demand_use_csv_data():
     skills = client.get("/api/skills")
 
     assert overview.status_code == 200
-    assert overview.json()["jobs_tracked"] == len(load_jobs())
+    assert overview.json()["jobs_tracked"] == len(current_only(load_jobs()))
     assert skills.status_code == 200
     assert skills.json()[0]["skill"] == "Python"
 
@@ -26,7 +26,9 @@ def test_job_listings_filter_and_paginate():
 
     assert response.status_code == 200
     body = response.json()
-    assert body["total"] == 7
+    expected = current_only(load_jobs())
+    expected = expected[expected["cities"].map(lambda cities: "Bengaluru" in cities)]
+    assert body["total"] == len(expected)
     assert len(body["items"]) == 2
     assert all(item["location"] == "Bengaluru" for item in body["items"])
     assert body["items"][0]["source_url"].startswith("https://")
@@ -219,7 +221,7 @@ def test_stale_and_unknown_posted_jobs_are_current_only_by_default(monkeypatch):
     assert [item["job_id"] for item in all_jobs.json()["items"]] == ["fresh", "stale-2023", "unknown"]
     by_id = {item["job_id"]: item for item in all_jobs.json()["items"]}
     assert by_id["stale-2023"]["freshness_status"] == "stale"
-    assert by_id["stale-2023"]["age_days"] > 90
+    assert by_id["stale-2023"]["age_days"] > 30
     assert by_id["unknown"]["freshness_status"] == "unknown"
     assert by_id["unknown"]["age_days"] is None
 
@@ -232,8 +234,8 @@ def test_data_quality_reports_freshness_and_dataset_scope(monkeypatch):
     monkeypatch.setattr(api_main, "load_jobs", lambda: jobs)
 
     body = client.get("/api/data-quality").json()
-    assert body["freshness_cutoff_days"] == 90
-    assert body["freshness_cutoff_date"] == (pd.Timestamp.today().date() - pd.Timedelta(days=90)).isoformat()
+    assert body["freshness_cutoff_days"] == 30
+    assert body["freshness_cutoff_date"] == (pd.Timestamp.today().date() - pd.Timedelta(days=30)).isoformat()
     assert body["freshness_counts"] == {"current": 1, "stale": 1, "unknown": 0}
     assert body["dataset_scope"]["row_count"] == 2
     assert body["dataset_scope"]["company_count"] == 2

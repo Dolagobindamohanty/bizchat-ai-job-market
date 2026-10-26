@@ -167,5 +167,5 @@ def test_bengaluru_discovery_excludes_2023_jobs_until_include_stale():
     assert all_jobs.json()["total"] == 2
     by_id = {item["job_id"]: item for item in all_jobs.json()["items"]}
     assert by_id["stale"]["freshness_status"] == "stale"
-    assert by_id["stale"]["age_days"] > 90
+    assert by_id["stale"]["age_days"] > 30
     assert by_id["stale"]["last_verified"]
