@@ -13,7 +13,7 @@
       "board_token": "stripe",
       "company": "Stripe",
       "status": "ok",
-      "jobs": 47,
+      "jobs": 48,
       "error": null
     },
     {
@@ -53,7 +53,7 @@
       "board_token": "meesho",
       "company": "Meesho",
       "status": "ok",
-      "jobs": 54,
+      "jobs": 52,
       "error": null
     },
     {
@@ -73,6 +73,6 @@
       "error": null
     }
   ],
-  "jobs": 263,
+  "jobs": 44,
   "complete": true
 }

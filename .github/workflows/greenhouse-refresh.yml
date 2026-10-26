@@ -35,6 +35,7 @@ jobs:
           --output data/raw/jobs-india.csv
           --sources-config collector/sources.india.json
           --report data/source-collection-report.json
+          --max-posted-age-days 30
           --timeout 20
 
       - name: Verify snapshot is non-empty and deployment-safe

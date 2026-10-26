@@ -6,7 +6,7 @@ import logging
 from pathlib import Path
 
 from collector.providers import collect_enabled_providers, load_greenhouse_config
-from collector.snapshot import write_snapshot
+from collector.snapshot import filter_recent_rows, write_snapshot
 from collector.multisource import collect_sources
 
 
@@ -16,6 +16,8 @@ def main() -> None:
     parser.add_argument("--max-pages", type=int, default=3)
     parser.add_argument("--page-size", type=int, default=50)
     parser.add_argument("--timeout", type=float, default=15.0, help="HTTP timeout in seconds, default: 15")
+    parser.add_argument("--max-posted-age-days", type=int,
+                        help="Publish only dated postings within this many days of today")
     parser.add_argument("--adzuna-country", default="in", help="Adzuna country code, default: in")
     parser.add_argument("--allow-empty", action="store_true", help="Allow publishing an empty snapshot")
     parser.add_argument("--greenhouse-config", type=Path,
@@ -41,6 +43,7 @@ def main() -> None:
             parser.error("--report must differ from --output and --sources-config")
         config = load_sources_config(args.sources_config)
         rows, reports = collect_sources(config, timeout=args.timeout)
+        rows = filter_recent_rows(rows, args.max_posted_age_days)
         failed = any(report["status"] != "ok" for report in reports)
         if args.report:
             args.report.parent.mkdir(parents=True, exist_ok=True)
@@ -59,6 +62,7 @@ def main() -> None:
                                      greenhouse_errors=greenhouse_errors,
                                      include_arbeitnow=not args.greenhouse_only,
                                      include_adzuna=not args.greenhouse_only)
+    rows = filter_recent_rows(rows, args.max_posted_age_days)
     for error in greenhouse_errors:
         print(f"WARNING: {error}", flush=True)
     count = write_snapshot(rows, args.output, allow_empty=args.allow_empty)

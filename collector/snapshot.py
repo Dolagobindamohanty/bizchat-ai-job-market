@@ -5,13 +5,33 @@ from __future__ import annotations
 import csv
 import os
 import tempfile
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Iterable
 
 from collector.validate import validate
 
 SNAPSHOT_COLUMNS = ["job_id", "source_job_id", "title", "company", "location", "description", "posted_date", "collected_at", "salary", "salary_is_predicted", "remote", "remote_type", "salary_min_lpa", "salary_max_lpa", "source", "source_url"]
+
+
+def filter_recent_rows(rows: Iterable[dict], max_age_days: int | None, *, today: date | None = None) -> list[dict]:
+    """Keep only dated postings within the publication freshness window."""
+    if max_age_days is None:
+        return [dict(row) for row in rows]
+    if max_age_days < 0:
+        raise ValueError("max_age_days must be non-negative")
+    reference = today or date.today()
+    cutoff = reference - timedelta(days=max_age_days)
+    recent = []
+    for row in rows:
+        value = str(row.get("posted_date") or "").strip()[:10]
+        try:
+            posted = date.fromisoformat(value)
+        except ValueError:
+            continue
+        if cutoff <= posted <= reference:
+            recent.append(dict(row))
+    return recent
 
 
 def _collected_at(row: dict) -> datetime:

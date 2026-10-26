@@ -4,6 +4,7 @@ import copy
 import csv
 import json
 import sys
+from datetime import date
 
 import pytest
 
@@ -12,7 +13,7 @@ from collector.multisource import (SourcesConfigError, SourcesPublicationError,
                                    collect_sources, load_sources_config,
                                    publish_sources_snapshot)
 from collector.providers import ProviderError
-from collector.snapshot import write_snapshot
+from collector.snapshot import filter_recent_rows, write_snapshot
 
 
 def board(source="lever", token="acme"):
@@ -21,6 +22,17 @@ def board(source="lever", token="acme"):
 
 def config(*boards, keywords=None):
     return {"boards": list(boards) or [board()], "location_keywords": keywords or ["India"]}
+
+
+def test_recent_snapshot_filter_excludes_old_and_undated_rows():
+    rows = [
+        {"job_id": "new", "posted_date": "2026-10-20"},
+        {"job_id": "old", "posted_date": "2026-09-26"},
+        {"job_id": "ancient", "posted_date": "2023-01-01"},
+        {"job_id": "unknown", "posted_date": None},
+    ]
+    recent = filter_recent_rows(rows, 30, today=date(2026, 10, 27))
+    assert [row["job_id"] for row in recent] == ["new"]
 
 
 LEVER_JOB = {
