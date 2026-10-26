@@ -15,7 +15,7 @@
   const dateLabel = (value, unknown='Unknown') => { if (!value) return unknown; const date = new Date(value); return Number.isNaN(date.getTime()) ? unknown : date.toLocaleDateString([], {dateStyle:'medium'}); };
   const freshness = job => { const status = String(job.freshness_status || (Number.isFinite(Number(job.age_days)) ? (Number(job.age_days) <= state.freshnessDays ? 'current' : 'stale') : 'unknown')).toLowerCase(); const age = Number.isFinite(Number(job.age_days)) ? `${job.age_days} day${Number(job.age_days)===1?'':'s'}` : 'unknown'; const verified = dateLabel(job.last_verified || job.collected_at); return `<span class="freshness-badge freshness-${e(status)}">${e(status==='current'?'Recent':status==='stale'?'Stale':'Date unknown')}</span><span class="freshness-detail">Age: ${e(age)} · Posted: ${e(dateLabel(job.posted_date || job.posted,'Unknown'))} · Last verified/collected: ${e(verified)} · Confirm still open at source</span>`; };
   const coverage = () => { const metadata = state.metadata || {}, scope = metadata.dataset_scope || {}, facets = state.catalog?.facets || {}, companies = scope.company_count ?? metadata.company_count ?? (facets.companies || []).length, sources = metadata.source_count ?? scope.source_count ?? (facets.sources || []).length; return `Coverage: ${metadata.dataset_rows ?? scope.row_count ?? 'configured'} dataset rows · ${companies || 'configured'} companies · ${sources || 'configured'} sources${scope.locations?.length ? ` · ${scope.locations.length} locations` : ''} · configured public boards only, not the full market`; };
-  const scopeMessage = () => `Bengaluru Jobs is a Bengaluru-only feed of explicit Bengaluru tech roles. India Insights is the broader configured India dataset, not the full Indian job market. ${coverage()}`;
+  const scopeMessage = () => `${state.catalog ? `${state.catalog.total ?? arr(state.catalog.items).length} current roles in the Bengaluru feed. ` : ''}Bengaluru Jobs is a Bengaluru-only feed of explicit Bengaluru tech roles. India Insights is the broader configured India dataset, not the full Indian job market. ${coverage()}`;
   const sourceOptions = selected => ['','greenhouse','lever','ashby'].map(source => `<option value="${source}" ${source===selected?'selected':''}>${source?e(source[0].toUpperCase()+source.slice(1)):'All sources'}</option>`).join('');
   function structured(value) {
     if (value === null || value === undefined) return '';
@@ -61,7 +61,7 @@
     $('page-title').textContent = view;
     $('role-count').textContent = state.catalog ? String(state.catalog.total ?? arr(state.catalog.items).length) : '—';
      $('view-root').innerHTML = `<div class="jobmatch"><div class="jm-session"><p>Resume text and files are sent to this application API only for the requested action, then kept in this browser tab's memory for the session. The app does not intentionally save raw resumes; hosting-provider logs follow their retention rules. External AI is never used automatically and requires explicit opt-in. Clear / delete session removes the local resume, profile and results.</p>${button('clear','Clear / delete session')}</div><p class="jm-status" role="status" aria-live="polite">${e(state.busy ? `${state.busy}…` : state.notice)}</p>${state.error?`<p class="jm-error" role="alert">${e(state.error)}</p>`:''}${view==='Bengaluru Jobs'?catalogView():view==='Upload Resume'?uploadView():view==='Resume Suggestions'?suggestionsView():resultsView()}</div>`;
-     const scopeBanner=$('scope-banner');if(scopeBanner)scopeBanner.innerHTML=e(view==='Bengaluru Jobs'?scopeMessage():'Bengaluru Jobs is a separate Bengaluru-only feed; India Insights is the broader configured India dataset.');
+      const scopeBanner=$('scope-banner');if(scopeBanner)scopeBanner.innerHTML=e(view==='Bengaluru Jobs'?scopeMessage():'India Insights is the broader configured dataset, not the full Indian job market. Bengaluru Jobs is a separate Bengaluru-only feed.');const bengaluruTab=$('scope-bengaluru'),indiaTab=$('scope-india');if(bengaluruTab&&indiaTab){const bengaluru=view==='Bengaluru Jobs';bengaluruTab.classList.toggle('active',bengaluru);indiaTab.classList.toggle('active',!bengaluru);bengaluruTab.ariaSelected=String(bengaluru);indiaTab.ariaSelected=String(!bengaluru);}
     toggleNav();
   }
   async function request(path,options,external=false) {
@@ -129,6 +129,8 @@
     // Background dashboard loads must not replace an editor while the user types.
     if (paintedView !== view) paint();
   };
+  $('scope-bengaluru')?.addEventListener('click',()=>{ $('scope-bengaluru').classList.toggle('active',true); $('scope-india').classList.toggle('active',false); $('scope-bengaluru').ariaSelected='true'; $('scope-india').ariaSelected='false'; setView('Bengaluru Jobs'); });
+  $('scope-india')?.addEventListener('click',()=>{ $('scope-bengaluru').classList.toggle('active',false); $('scope-india').classList.toggle('active',true); $('scope-bengaluru').ariaSelected='false'; $('scope-india').ariaSelected='true'; setView('Overview'); });
   $('view-root').addEventListener('input',event => {
     const target = event.target, key = target.dataset.jmInput, field = target.dataset.jmField;
     if (key) {
