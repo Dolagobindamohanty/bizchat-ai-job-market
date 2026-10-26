@@ -11,13 +11,13 @@ BizChat 2.0 is a production-style web application for understanding India's AI/M
 - **JobMatch Bengaluru:** Bengaluru-only tech discovery, PDF/DOCX or pasted-resume parsing, editable profiles, ranked matches, role fit, and skill gaps.
 - **Local semantic resume matching** works without an API key or model download; optional consent-gated hosted embeddings and grounded LLM skill suggestions remain available when configured server-side. See [setup, privacy, and limitations](docs/jobmatch-bengaluru.md).
 - Multi-source company-board collection from **Greenhouse, Lever, and Ashby**, with source/company/role/skill filtering. Live snapshot: `data/raw/jobs-india.csv`; coverage and collection receipts: `data/source-collection-report.json`.
-- KPI cards for tracked jobs, median salary, top skill, and leading city
+- KPI cards for tracked jobs, top skill, and leading city; salary fields remain disclosure-only where available
 - Skill demand rankings and weekly comparisons
 - City-wise hiring and city/skill heatmap
-- Salary midpoint analysis by city and skill
+- Salary disclosure data is available through supported API responses but is not presented as a market-value dashboard
 - Explainable recommendations based on skills the user already has
 - Salary-aware recommendations that can account for target role, experience, and desired salary
-- Responsive product-style interface with Overview, Skills, Locations, Salaries, and Learn next views
+- Responsive product-style interface with Overview, Skills, Locations, and Learn next views
 - FastAPI endpoints for dashboard KPIs, jobs, skills, salaries, locations, and recommendations
 - Local fallback data so the frontend remains viewable while the API is offline
 - Loading skeletons, retryable errors, visible live/sample data status, dark mode, and mobile layout
