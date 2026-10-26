@@ -4,8 +4,8 @@
   const views = [['Bengaluru Jobs','⌖'],['Upload Resume','↑'],['My Matches','◎'],['Role Fit','◇'],['Skill Gaps','✦'],['Resume Suggestions','↗']];
   NAV.unshift(...views);
   const state = {text:'',file:null,profile:null,matches:null,suggestions:null,target:'',embeddings:false,lastMatchEmbeddings:false,matchConsent:false,suggestionConsent:false,busy:'',error:'',notice:'',query:'',source:'',company:'',role:'',skillQuery:'',matchSource:'',scope:'bengaluru',includeStale:false,freshnessDays:30,metadata:null,page:1,catalog:null,catalogBusy:false,catalogError:''};
-  function readShareState(){const params=new URLSearchParams(window.location?.search||''),scope=params.get('scope');if(scope==='ai'||scope==='bengaluru')state.scope=scope;if(params.get('q'))state.query=params.get('q');if(params.get('source'))state.source=params.get('source');if(params.get('company'))state.company=params.get('company');if(params.get('role'))state.role=params.get('role');if(params.get('skills'))state.skillQuery=params.get('skills');state.includeStale=params.get('stale')==='1';const page=Number(params.get('page'));if(Number.isInteger(page)&&page>0)state.page=page;}
-  function writeShareState(){if(!window.history?.replaceState||!window.location)return;const params=new URLSearchParams(window.location.search||'');['scope','q','source','company','role','skills','stale','page'].forEach(key=>params.delete(key));params.set('scope',view==='Overview'?'india':state.scope);if(view!=='Overview'){if(state.query)params.set('q',state.query);if(state.source)params.set('source',state.source);if(state.company)params.set('company',state.company);if(state.role)params.set('role',state.role);if(state.skillQuery)params.set('skills',state.skillQuery);if(state.includeStale)params.set('stale','1');if(state.page>1)params.set('page',String(state.page));}const query=params.toString();window.history.replaceState(null,'',`${window.location.pathname}${query?`?${query}`:''}${window.location.hash||''}`);}
+  function readShareState(){const params=new URLSearchParams(window.location?.search||''),scope=params.get('scope');if(scope==='ai'||scope==='bengaluru')state.scope=scope;else if(scope!=='india')state.scope='bengaluru';if(params.get('q'))state.query=params.get('q');if(params.get('source'))state.source=params.get('source');if(params.get('company'))state.company=params.get('company');if(params.get('role'))state.role=params.get('role');if(params.get('skills'))state.skillQuery=params.get('skills');state.includeStale=params.get('stale')==='1';const page=Number(params.get('page'));if(Number.isInteger(page)&&page>0)state.page=page;}
+  function writeShareState(push=false){if(!window.history?.replaceState||!window.location)return;const params=new URLSearchParams(window.location.search||'');['scope','q','source','company','role','skills','stale','page'].forEach(key=>params.delete(key));params.set('scope',view==='Overview'?'india':state.scope);if(view!=='Overview'){if(state.query)params.set('q',state.query);if(state.source)params.set('source',state.source);if(state.company)params.set('company',state.company);if(state.role)params.set('role',state.role);if(state.skillQuery)params.set('skills',state.skillQuery);if(state.includeStale)params.set('stale','1');if(state.page>1)params.set('page',String(state.page));}const query=params.toString(),url=`${window.location.pathname}${query?`?${query}`:''}${window.location.hash||''}`;(push?window.history.pushState:window.history.replaceState).call(window.history,null,'',url);}
   let generation = 0, catalogRequest = 0, paintedView = '';
   const e = escapeHTML, arr = value => Array.isArray(value) ? value : [], words = value => arr(value).join(', ');
   const split = value => value.split(',').map(x => x.trim()).filter(Boolean);
@@ -17,7 +17,7 @@
   const dateLabel = (value, unknown='Unknown') => { if (!value) return unknown; const date = new Date(value); return Number.isNaN(date.getTime()) ? unknown : date.toLocaleDateString([], {dateStyle:'medium'}); };
   const freshness = job => { const status = String(job.freshness_status || (Number.isFinite(Number(job.age_days)) ? (Number(job.age_days) <= state.freshnessDays ? 'current' : 'stale') : 'unknown')).toLowerCase(); const age = Number.isFinite(Number(job.age_days)) ? `${job.age_days} day${Number(job.age_days)===1?'':'s'}` : 'unknown'; const verified = dateLabel(job.last_verified || job.collected_at); return `<span class="freshness-badge freshness-${e(status)}">${e(status==='current'?'Recent':status==='stale'?'Stale':'Date unknown')}</span><span class="freshness-detail">Age: ${e(age)} · Posted: ${e(dateLabel(job.posted_date || job.posted,'Unknown'))} · Last verified/collected: ${e(verified)} · Confirm still open at source</span>`; };
   const coverage = () => { const metadata = state.metadata || {}, scope = metadata.dataset_scope || {}, facets = state.catalog?.facets || {}, companies = scope.company_count ?? metadata.company_count ?? (facets.companies || []).length, sources = metadata.source_count ?? scope.source_count ?? (facets.sources || []).length; return `Coverage: ${metadata.dataset_rows ?? scope.row_count ?? 'configured'} dataset rows · ${companies || 'configured'} companies · ${sources || 'configured'} sources${scope.locations?.length ? ` · ${scope.locations.length} locations` : ''} · configured public boards only, not the full market`; };
-  const scopeMessage = () => `${state.catalog ? `${state.catalog.total ?? arr(state.catalog.items).length} current roles in the Bengaluru feed. ` : ''}Bengaluru Jobs is a Bengaluru-only feed of explicit Bengaluru tech roles. India Insights is the broader configured India dataset, not the full Indian job market. ${coverage()}`;
+  const scopeMessage = () => `${state.catalog ? `${state.catalog.total ?? arr(state.catalog.items).length} current roles in the Bengaluru feed. ` : ''}${state.scope==='ai'?'Bengaluru AI Jobs':'Bengaluru Jobs'} is a Bengaluru-only feed of explicit Bengaluru tech roles. This is a small, directional sample, not a complete market view. India Insights is the broader configured India dataset, not the full Indian job market. ${coverage()}`;
   const sourceOptions = selected => ['','greenhouse','lever','ashby'].map(source => `<option value="${source}" ${source===selected?'selected':''}>${source?e(source[0].toUpperCase()+source.slice(1)):'All sources'}</option>`).join('');
   function structured(value) {
     if (value === null || value === undefined) return '';
@@ -132,8 +132,8 @@
     // Background dashboard loads must not replace an editor while the user types.
     if (paintedView !== view) paint();
   };
-  $('scope-bengaluru')?.addEventListener('click',()=>{ state.scope='bengaluru'; $('scope-bengaluru').classList.toggle('active',true); $('scope-india').classList.toggle('active',false); $('scope-bengaluru').ariaSelected='true'; $('scope-india').ariaSelected='false'; setView('Bengaluru Jobs'); writeShareState(); loadCatalog(); });
-  $('scope-india')?.addEventListener('click',()=>{ $('scope-bengaluru').classList.toggle('active',false); $('scope-india').classList.toggle('active',true); $('scope-bengaluru').ariaSelected='false'; $('scope-india').ariaSelected='true'; setView('Overview'); writeShareState(); });
+  $('scope-bengaluru')?.addEventListener('click',()=>{ state.scope='bengaluru'; $('scope-bengaluru').classList.toggle('active',true); $('scope-india').classList.toggle('active',false); $('scope-bengaluru').ariaSelected='true'; $('scope-india').ariaSelected='false'; setView('Bengaluru Jobs'); writeShareState(true); loadCatalog(); });
+  $('scope-india')?.addEventListener('click',()=>{ $('scope-bengaluru').classList.toggle('active',false); $('scope-india').classList.toggle('active',true); $('scope-bengaluru').ariaSelected='false'; $('scope-india').ariaSelected='true'; setView('Overview'); writeShareState(true); });
   $('view-root').addEventListener('input',event => {
     const target = event.target, key = target.dataset.jmInput, field = target.dataset.jmField;
     if (key) {
@@ -178,9 +178,12 @@
    // setup() has already registered the nav's delegated click listener.
   // Replace only its children; keep that listener and preserve the five legacy views.
   $('navigation').innerHTML = NAV.map(([name,icon])=>`<button type="button" data-view="${e(name)}"><i>${e(icon)}</i>${e(name)}</button>`).join('');
-  readShareState();
-  const initialScope=new URLSearchParams(window.location?.search||'').get('scope');
-  setView(initialScope==='india'?'Overview':'Bengaluru Jobs');
-   if(initialScope!=='india')loadCatalog();
+   const baseSetView=setView;
+   setView=function(next,options={}){baseSetView(next);if(!options.skipUrl)writeShareState(options.push===true);};
+   window.addEventListener?.('popstate',()=>{readShareState();const scope=new URLSearchParams(window.location?.search||'').get('scope');setView(scope==='india'?'Overview':'Bengaluru Jobs',{skipUrl:true});if(scope!=='india')loadCatalog();});
+   readShareState();
+   const initialScope=new URLSearchParams(window.location?.search||'').get('scope');
+   setView(initialScope==='india'?'Overview':'Bengaluru Jobs');
+    if(initialScope!=='india')loadCatalog();
    loadMetadata();
  })();

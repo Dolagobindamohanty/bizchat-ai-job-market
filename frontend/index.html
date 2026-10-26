@@ -25,16 +25,16 @@
       </aside>
       <main class="content">
         <header>
-          <div><p class="eyebrow">BENGALURU JOBS / INDIA INSIGHTS</p><h1 id="page-title">Bengaluru Tech Jobs</h1><p class="subhead">Current postings only · signals from <span id="role-count">—</span> roles.</p><div class="scope-tabs" role="tablist" aria-label="Job data scope"><button id="scope-bengaluru" class="scope-tab active" type="button" role="tab" aria-selected="true">Bengaluru Jobs</button><button id="scope-india" class="scope-tab" type="button" role="tab" aria-selected="false">India Insights</button></div></div>
+          <div><p class="eyebrow">BENGALURU JOBS / INDIA INSIGHTS</p><h1 id="page-title">Bengaluru Tech Jobs</h1><p class="subhead">Current postings only · signals from <span id="role-count">Loading…</span> Bengaluru roles.</p><div class="scope-tabs" role="tablist" aria-label="Job data scope"><button id="scope-bengaluru" class="scope-tab active" type="button" role="tab" aria-selected="true">Bengaluru Jobs</button><button id="scope-india" class="scope-tab" type="button" role="tab" aria-selected="false">India Insights</button></div></div>
           <div class="header-actions"><button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle dark mode">☾</button><span id="data-status" class="sr-only">Loading…</span><button class="avatar" id="avatar" aria-label="Open account">AM</button></div>
         </header>
-        <div id="data-banner" class="data-banner" role="status" aria-live="polite">Loading current job listings…</div>
-        <div id="scope-banner" class="scope-banner" role="status"><strong>India Insights:</strong> current postings from configured public boards only — not the full Indian job market. Location filters below describe the broader configured dataset; Bengaluru Jobs is a separate Bengaluru-only feed.</div>
+        <div id="data-banner" class="data-banner" role="status" aria-live="polite">Loading current Bengaluru job listings…</div>
+        <div id="scope-banner" class="scope-banner" role="status"><strong>Bengaluru Jobs:</strong> current postings from configured public boards only — not every Bengaluru opening. This is a small, directional sample; verify each role at its original source.</div>
         <div id="error-banner" class="error-banner" hidden role="alert"><span id="error-message">We couldn't load live data.</span><button id="retry-load" type="button">Retry</button></div>
           <div class="toolbar"><div class="filters"><label>LOCATION SCOPE<select id="city-filter"><option>All locations (India)</option></select></label><label>SOURCE<select id="source-filter"><option>All sources</option></select></label><label>SENIORITY (TITLE)<select id="role-filter"><option>All role types</option></select></label><label>MIN. EXPERIENCE<select id="experience-filter"><option>All experience</option><option value="junior">0–2 years</option><option value="mid">3–6 years</option><option value="senior">7+ years</option><option value="unknown">Not specified</option></select></label><label>WORK MODE<select id="remote-filter"><option>All remote types</option><option>Remote</option><option>Hybrid</option><option>On-site</option><option>Unknown</option></select></label><label>SKILL<input id="skill-filter" type="search" placeholder="e.g. Python" /></label><button id="clear-filters" class="secondary" type="button">Clear filters</button></div><span class="date-chip">◷ &nbsp;Updated daily</span></div>
         <div id="active-filters" class="active-filters" hidden aria-live="polite"></div>
         <section class="kpis" id="kpis" aria-label="Market metrics"></section>
-         <div id="view-root"><section class="panel loading-card" aria-live="polite"><div class="skeleton-line"></div><div class="skeleton-line short"></div><p>Loading current job listings…</p></section></div>
+         <div id="view-root"><section class="panel loading-card" aria-live="polite"><div class="skeleton-line"></div><div class="skeleton-line short"></div><p>Loading current Bengaluru job listings…</p></section></div>
         <section class="about panel"><h2>About this data</h2><p>India Insights is a current-only view of a limited configured dataset, not the full Indian job market: postings older than the configured freshness window, or without a posting date, are hidden by default. Bengaluru Jobs is a separate Bengaluru-only feed of explicit Bengaluru tech roles; it has its own opt-in control for older or unknown-date listings. When the analytics API is unavailable, this dashboard uses clearly labelled illustrative sample data and never invents jobs.</p><p>Configured company career boards use <a href="https://developers.greenhouse.io/job-board.html" target="_blank" rel="noopener noreferrer">Greenhouse</a>, <a href="https://github.com/lever/postings-api" target="_blank" rel="noopener noreferrer">Lever</a>, and <a href="https://developers.ashbyhq.com/docs/public-job-posting-api" target="_blank" rel="noopener noreferrer">Ashby</a>. Coverage is limited to configured companies and sources, not every opening. Missing posting dates remain unknown. A recent posting is not a guarantee that the role is still open; verify current availability and apply on the original company listing. Fields such as salary, experience, skills, and work mode may be marked unavailable when the employer does not provide them.</p></section><footer><span>BizChat 2.0</span><span>Built for clearer career decisions · Verify details with the source</span></footer>
       </main>
     </div>
@@ -44,18 +44,19 @@
         const scope = new URLSearchParams(window.location.search).get('scope');
         const india = scope === 'india';
         const ai = scope === 'ai';
-        if (!india && !ai) return;
+        const bengaluru = !india && !ai;
         const title = document.getElementById('page-title');
         const subhead = document.querySelector('.subhead');
         const banner = document.getElementById('scope-banner');
         const dataBanner = document.getElementById('data-banner');
         const bengaluruTab = document.getElementById('scope-bengaluru');
         const indiaTab = document.getElementById('scope-india');
-        if (title) title.textContent = india ? 'India Insights' : 'Bengaluru AI Jobs';
-        if (subhead) subhead.innerHTML = `Current postings only · signals from <span id="role-count">—</span> ${india ? 'India' : 'Bengaluru AI'} roles.`;
-        if (banner) banner.textContent = india ? 'India Insights · configured public boards only — not the full Indian job market.' : 'Bengaluru AI Jobs · current postings from configured public boards only.';
-        if (dataBanner) dataBanner.textContent = india ? 'Loading current India job listings…' : 'Loading current Bengaluru AI listings…';
-        if (bengaluruTab) { bengaluruTab.classList.toggle('active', !india); bengaluruTab.setAttribute('aria-selected', String(!india)); }
+        if (title) title.textContent = india ? 'India Insights' : ai ? 'Bengaluru AI Jobs' : 'Bengaluru Tech Jobs';
+        document.title = india ? 'India Insights · BizChat' : ai ? 'Bengaluru AI Jobs · BizChat' : 'Bengaluru Tech Jobs · BizChat';
+        if (subhead) subhead.innerHTML = `Current postings only · signals from <span id="role-count">Loading…</span> ${india ? 'India' : ai ? 'Bengaluru AI' : 'Bengaluru'} roles.`;
+        if (banner) banner.innerHTML = india ? '<strong>India Insights:</strong> current postings from configured public boards only — not the full Indian job market. This is a small, directional sample; verify each role at its original source.' : ai ? '<strong>Bengaluru AI Jobs:</strong> current postings from configured public boards only — not every Bengaluru opening. This is a small, directional sample; verify each role at its original source.' : '<strong>Bengaluru Jobs:</strong> current postings from configured public boards only — not every Bengaluru opening. This is a small, directional sample; verify each role at its original source.';
+        if (dataBanner) dataBanner.textContent = india ? 'Loading current India job listings…' : ai ? 'Loading current Bengaluru AI listings…' : 'Loading current Bengaluru job listings…';
+        if (bengaluruTab) { bengaluruTab.classList.toggle('active', bengaluru); bengaluruTab.setAttribute('aria-selected', String(bengaluru)); }
         if (indiaTab) { indiaTab.classList.toggle('active', india); indiaTab.setAttribute('aria-selected', String(india)); }
       })();
     </script>
