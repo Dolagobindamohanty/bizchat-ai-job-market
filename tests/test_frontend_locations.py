@@ -77,6 +77,27 @@ def test_dropdown_and_counts_merge_aliases_and_filter_multi_city_membership():
     """)
 
 
+def test_state_job_type_and_career_level_filters_use_explicit_signals():
+    run_scenario(r"""
+      await tick();
+      run(`jobs=normalize([
+        {id:'intern',title:'Data Science Intern',location:'Bangalore',description:'Internship opportunity'},
+        {id:'entry',title:'Backend Engineer',location:'Hyderabad',description:'Full-time role',experience_min:1},
+        {id:'contract',title:'Platform Engineer',location:'Pune',description:'Contract position',experience_min:7}
+      ]);populateFilters();`);
+      assert(el('state-filter').innerHTML.includes('Karnataka'));
+      assert(el('state-filter').innerHTML.includes('Telangana'));
+      assert(el('job-type-filter').innerHTML.includes('Internship'));
+      assert(el('career-level-filter').innerHTML.includes('Fresher'));
+      el('state-filter').value='Karnataka';
+      assert.deepEqual(JSON.parse(run('JSON.stringify(filtered().map(j=>j.id))')),['intern']);
+      el('state-filter').value='All states';el('job-type-filter').value='Internship';
+      assert.deepEqual(JSON.parse(run('JSON.stringify(filtered().map(j=>j.id))')),['intern']);
+      el('job-type-filter').value='All job types';el('career-level-filter').value='Entry-level';
+      assert.deepEqual(JSON.parse(run('JSON.stringify(filtered().map(j=>j.id))')),['entry']);
+    """)
+
+
 def test_loading_saved_search_canonicalizes_legacy_alias():
     run_scenario(r"""
       await tick();

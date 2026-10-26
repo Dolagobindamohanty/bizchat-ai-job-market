@@ -67,10 +67,10 @@ def test_public_page_supplies_startup_dom_before_script():
     # Learning-view controls are created dynamically; these are the fixed DOM
     # elements used by setup, filtered, render, and load on the public page.
     required = {
-        "navigation", "city-filter", "source-filter", "role-count", "kpis",
+        "navigation", "city-filter", "state-filter", "job-type-filter", "career-level-filter", "source-filter", "role-count", "kpis",
         "page-title", "data-status", "refresh-status", "avatar", "view-root",
     }
-    scripts = [ids for src, ids in page.scripts if src == "app.js"]
+    scripts = [ids for src, ids in page.scripts if src and src.startswith("app.js")]
     assert len(scripts) == 1
     assert required <= scripts[0]
     assert re.search(r"let jobs\s*=\s*SAMPLE,\s*view\s*=\s*'Overview'", source)

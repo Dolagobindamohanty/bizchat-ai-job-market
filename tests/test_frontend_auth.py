@@ -8,7 +8,7 @@ CONFIG = (ROOT / "frontend/config.js").read_text(encoding="utf-8")
 
 
 def test_config_loads_before_app_and_uses_public_key_only():
-    assert HTML.index('src="config.js"') < HTML.index('src="app.js"')
+    assert HTML.index('src="config.js?') < HTML.index('src="app.js?')
     assert "supabaseUrl: 'https://onbovypondmukhzheyhx.supabase.co'" in CONFIG
     assert "authRedirectUrl: 'https://bizchat-ai-job-market.vercel.app/'" in CONFIG
     assert "service_role" not in CONFIG.lower()

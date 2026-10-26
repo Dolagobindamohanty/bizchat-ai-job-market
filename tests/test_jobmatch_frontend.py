@@ -82,7 +82,7 @@ def run_scenario(source):
 
 def test_script_order_navigation_default_and_background_editor_focus():
     html = (ROOT / "frontend/index.html").read_text(encoding="utf-8")
-    assert html.index('src="app.js"') < html.index('src="jobmatch.js"')
+    assert html.index('src="app.js?') < html.index('src="jobmatch.js?')
     run_scenario(r"""
       await tick();
       assert.equal(run('view'),'Bengaluru Jobs');
