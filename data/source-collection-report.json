@@ -13,7 +13,7 @@
       "board_token": "stripe",
       "company": "Stripe",
       "status": "ok",
-      "jobs": 46,
+      "jobs": 47,
       "error": null
     },
     {
@@ -21,7 +21,7 @@
       "board_token": "databricks",
       "company": "Databricks",
       "status": "ok",
-      "jobs": 89,
+      "jobs": 86,
       "error": null
     },
     {
@@ -53,7 +53,7 @@
       "board_token": "meesho",
       "company": "Meesho",
       "status": "ok",
-      "jobs": 55,
+      "jobs": 54,
       "error": null
     },
     {
@@ -73,6 +73,6 @@
       "error": null
     }
   ],
-  "jobs": 266,
+  "jobs": 263,
   "complete": true
 }
