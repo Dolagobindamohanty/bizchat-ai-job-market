@@ -4,6 +4,8 @@
   const views = [['Bengaluru Jobs','⌖'],['Upload Resume','↑'],['My Matches','◎'],['Role Fit','◇'],['Skill Gaps','✦'],['Resume Suggestions','↗']];
   NAV.unshift(...views);
   const state = {text:'',file:null,profile:null,matches:null,suggestions:null,target:'',embeddings:false,lastMatchEmbeddings:false,matchConsent:false,suggestionConsent:false,busy:'',error:'',notice:'',query:'',source:'',company:'',role:'',skillQuery:'',matchSource:'',scope:'bengaluru',includeStale:false,freshnessDays:30,metadata:null,page:1,catalog:null,catalogBusy:false,catalogError:''};
+  function readShareState(){const params=new URLSearchParams(window.location?.search||'');if(params.get('scope')==='ai')state.scope='ai';if(params.get('q'))state.query=params.get('q');if(params.get('source'))state.source=params.get('source');if(params.get('company'))state.company=params.get('company');if(params.get('role'))state.role=params.get('role');if(params.get('skills'))state.skillQuery=params.get('skills');state.includeStale=params.get('stale')==='1';const page=Number(params.get('page'));if(Number.isInteger(page)&&page>0)state.page=page;}
+  function writeShareState(){if(!window.history?.replaceState||!window.location)return;const params=new URLSearchParams(window.location.search||'');['scope','q','source','company','role','skills','stale','page'].forEach(key=>params.delete(key));params.set('scope',state.scope);if(state.query)params.set('q',state.query);if(state.source)params.set('source',state.source);if(state.company)params.set('company',state.company);if(state.role)params.set('role',state.role);if(state.skillQuery)params.set('skills',state.skillQuery);if(state.includeStale)params.set('stale','1');if(state.page>1)params.set('page',String(state.page));const query=params.toString();window.history.replaceState(null,'',`${window.location.pathname}${query?`?${query}`:''}${window.location.hash||''}`);}
   let generation = 0, catalogRequest = 0, paintedView = '';
   const e = escapeHTML, arr = value => Array.isArray(value) ? value : [], words = value => arr(value).join(', ');
   const split = value => value.split(',').map(x => x.trim()).filter(Boolean);
@@ -42,7 +44,7 @@
   }
   function resultsView() {
     const result = state.matches;
-    if (view === 'My Matches') return `${matchControls()}${result?`<section class="panel"><h2>${e(result.total ?? arr(result.items).length)} matching roles</h2><p class="panel-help">${e(state.lastMatchEmbeddings?'Requested embedding-enhanced matching.':'Baseline matching.')} ${e(typeof result.integration === 'string'?result.integration:'')}</p>${cards(result.items,true) || empty('No matching jobs found. Review your profile or try again when more listings are available.')}</section>`:''}`;
+    if (view === 'My Matches') return `${matchControls()}${result?`<section class="panel"><h2>${e(result.total ?? arr(result.items).length)} matching roles</h2><p class="panel-help">${e(state.lastMatchEmbeddings?'Requested embedding-enhanced matching.':'Baseline matching.')} How matching works: scores compare reviewed profile skills with extracted role requirements; missing skills are shown below. Scores are comparative, not hiring probabilities. ${e(typeof result.integration === 'string'?result.integration:'')}</p>${cards(result.items,true) || empty('No matching jobs found. Review your profile or try again when more listings are available.')}</section>`:''}`;
     if (!result) return `<section class="panel"><h2>${e(view)}</h2>${empty('No match results yet. Parse a resume, review the profile, and run My Matches first.')}${button('nav-matches','Go to My Matches',true)}</section>`;
     if (view === 'Role Fit') return `<section class="panel"><h2>Role fit across matched jobs</h2><p class="panel-help">Comparative scores are not hiring probabilities.</p>${arr(result.roles).map(role=>`<article class="jm-job"><h3>${e(role.role)}</h3><p>${e(score(role.score))} · ${e(typeof role.jobs === 'number'?role.jobs:arr(role.jobs).length)} jobs</p></article>`).join('') || empty('No role-level fit data returned.')}</section>`;
     return `<section class="panel"><h2>Skills to verify and develop</h2><p class="panel-help">These skills were requested in matched jobs but not identified in your reviewed profile. You may already know them; update your profile before treating them as learning needs.</p>${arr(result.gaps).map(gap=>`<article class="jm-job"><h3>${e(gap.skill)}</h3><p>${e(gap.count)} of ${e(gap.total)} relevant jobs</p><p>${e(gap.advice || 'Verify your experience with this skill, then consider targeted practice.')}</p></article>`).join('') || empty('No skill gaps identified in these results.')}</section>`;
@@ -76,6 +78,7 @@
   const post = (path,body) => request(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)},body.use_embeddings===true || path==='/resume/suggestions');
   async function loadCatalog() {
     const id = ++catalogRequest, epoch = generation;
+    writeShareState();
     state.catalogBusy = true; state.catalogError = ''; paint();
     try {
        const data = await request(`/jobs/${state.scope}?${new URLSearchParams({q:state.query,source:state.source,company:state.company,role:state.role,skills:state.skillQuery,page:String(state.page),page_size:'20',include_stale:String(state.includeStale)})}`);
@@ -146,8 +149,8 @@
     }
   });
    $('view-root').addEventListener('change',event => {
-     if (event.target.id==='jm-scope') { state.scope=event.target.value; state.page=1; state.catalog=null; loadCatalog(); }
-     if (event.target.dataset.jmInput==='includeStale') { state.includeStale=!!event.target.checked; state.page=1; state.catalog=null; loadCatalog(); }
+      if (event.target.id==='jm-scope') { state.scope=event.target.value; state.page=1; state.catalog=null; loadCatalog(); }
+      if (event.target.dataset.jmInput==='includeStale') { state.includeStale=!!event.target.checked; state.page=1; state.catalog=null; loadCatalog(); }
     if (event.target.id!=='jm-file') return;
     const file = event.target.files?.[0]; state.file=null; state.error='';
     if (file && (!/\.(pdf|docx)$/i.test(file.name) || file.size>5*1024*1024 || file.size===0)) state.error='Choose a non-empty PDF or DOCX file no larger than 5 MiB.';
@@ -175,6 +178,7 @@
    // setup() has already registered the nav's delegated click listener.
   // Replace only its children; keep that listener and preserve the five legacy views.
   $('navigation').innerHTML = NAV.map(([name,icon])=>`<button type="button" data-view="${e(name)}"><i>${e(icon)}</i>${e(name)}</button>`).join('');
+  readShareState();
   setView('Bengaluru Jobs');
    loadCatalog();
    loadMetadata();
