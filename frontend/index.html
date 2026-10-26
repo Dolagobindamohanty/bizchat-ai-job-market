@@ -63,5 +63,17 @@
     <script src="config.js"></script>
     <script src="app.js"></script>
     <script src="jobmatch.js"></script>
+    <script>
+      (() => {
+        const scope = new URLSearchParams(location.search).get('scope');
+        if (scope === 'india') {
+          window.__BIZCHAT_APPLY_SCOPE?.('india');
+        } else if (scope === 'ai') {
+          window.__BIZCHAT_APPLY_SCOPE?.('ai');
+        } else {
+          window.__BIZCHAT_APPLY_SCOPE?.('bengaluru');
+        }
+      })();
+    </script>
   </body>
 </html>

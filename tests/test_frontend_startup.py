@@ -85,6 +85,17 @@ def test_public_page_supplies_startup_dom_before_script():
     assert "${jobTable(list.slice(0,6))}" in source
 
 
+def test_public_page_applies_all_scope_routes_after_scripts():
+    page = (FRONTEND / "index.html").read_text(encoding="utf-8")
+    assert "const scope = new URLSearchParams(location.search).get('scope');" in page
+    assert "window.__BIZCHAT_APPLY_SCOPE?.('india');" in page
+    assert "window.__BIZCHAT_APPLY_SCOPE?.('ai');" in page
+    assert "window.__BIZCHAT_APPLY_SCOPE?.('bengaluru');" in page
+    source = (FRONTEND / "jobmatch.js").read_text(encoding="utf-8")
+    assert "window.__BIZCHAT_APPLY_SCOPE=applyScope;" in source
+    assert "view==='Overview'" in source
+
+
 def test_salary_section_is_not_in_primary_navigation():
     source = (FRONTEND / "app.js").read_text(encoding="utf-8")
     assert "['Salaries'" not in source

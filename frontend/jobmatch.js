@@ -181,10 +181,10 @@
   $('navigation').innerHTML = NAV.map(([name,icon])=>`<button type="button" data-view="${e(name)}"><i>${e(icon)}</i>${e(name)}</button>`).join('');
    const baseSetView=setView;
    setView=function(next,options={}){baseSetView(next);if(!options.skipUrl)writeShareState(options.push===true);};
-   window.addEventListener?.('popstate',()=>{readShareState();const scope=requestedScope();setView(scope==='india'?'Overview':'Bengaluru Jobs',{skipUrl:true});if(scope!=='india')loadCatalog();});
+   function applyScope(scope,push=false){const normalized=scope==='india'||scope==='ai'||scope==='bengaluru'?scope:'bengaluru',india=normalized==='india',same=india?view==='Overview':view==='Bengaluru Jobs'&&state.scope===normalized;if(!same){if(!india)state.scope=normalized;setView(india?'Overview':'Bengaluru Jobs',{skipUrl:true});if(!india)loadCatalog();}writeShareState(push);}
+   window.__BIZCHAT_APPLY_SCOPE=applyScope;
+   window.addEventListener?.('popstate',()=>{readShareState();applyScope(requestedScope());});
    readShareState();
-   const initialScope=requestedScope();
-   setView(initialScope==='india'?'Overview':'Bengaluru Jobs');
-    if(initialScope!=='india')loadCatalog();
+   applyScope(requestedScope());
    loadMetadata();
  })();
