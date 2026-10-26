@@ -4,7 +4,8 @@
   const views = [['Bengaluru Jobs','⌖'],['Upload Resume','↑'],['My Matches','◎'],['Role Fit','◇'],['Skill Gaps','✦'],['Resume Suggestions','↗']];
   NAV.unshift(...views);
   const state = {text:'',file:null,profile:null,matches:null,suggestions:null,target:'',embeddings:false,lastMatchEmbeddings:false,matchConsent:false,suggestionConsent:false,busy:'',error:'',notice:'',query:'',source:'',company:'',role:'',skillQuery:'',matchSource:'',scope:'bengaluru',includeStale:false,freshnessDays:30,metadata:null,page:1,catalog:null,catalogBusy:false,catalogError:''};
-  function readShareState(){const params=new URLSearchParams(window.location?.search||''),scope=params.get('scope');if(scope==='ai'||scope==='bengaluru')state.scope=scope;else if(scope!=='india')state.scope='bengaluru';if(params.get('q'))state.query=params.get('q');if(params.get('source'))state.source=params.get('source');if(params.get('company'))state.company=params.get('company');if(params.get('role'))state.role=params.get('role');if(params.get('skills'))state.skillQuery=params.get('skills');state.includeStale=params.get('stale')==='1';const page=Number(params.get('page'));if(Number.isInteger(page)&&page>0)state.page=page;}
+  function requestedScope(){const scope=new URLSearchParams(window.location?.search||'').get('scope');return scope==='india'||scope==='ai'||scope==='bengaluru'?scope:'bengaluru';}
+  function readShareState(){const params=new URLSearchParams(window.location?.search||''),scope=requestedScope();if(scope==='india')state.scope='bengaluru';else state.scope=scope;if(params.get('q'))state.query=params.get('q');if(params.get('source'))state.source=params.get('source');if(params.get('company'))state.company=params.get('company');if(params.get('role'))state.role=params.get('role');if(params.get('skills'))state.skillQuery=params.get('skills');state.includeStale=params.get('stale')==='1';const page=Number(params.get('page'));if(Number.isInteger(page)&&page>0)state.page=page;}
   function writeShareState(push=false){if(!window.history?.replaceState||!window.location)return;const params=new URLSearchParams(window.location.search||'');['scope','q','source','company','role','skills','stale','page'].forEach(key=>params.delete(key));params.set('scope',view==='Overview'?'india':state.scope);if(view!=='Overview'){if(state.query)params.set('q',state.query);if(state.source)params.set('source',state.source);if(state.company)params.set('company',state.company);if(state.role)params.set('role',state.role);if(state.skillQuery)params.set('skills',state.skillQuery);if(state.includeStale)params.set('stale','1');if(state.page>1)params.set('page',String(state.page));}const query=params.toString(),url=`${window.location.pathname}${query?`?${query}`:''}${window.location.hash||''}`;(push?window.history.pushState:window.history.replaceState).call(window.history,null,'',url);}
   let generation = 0, catalogRequest = 0, paintedView = '';
   const e = escapeHTML, arr = value => Array.isArray(value) ? value : [], words = value => arr(value).join(', ');
@@ -180,9 +181,9 @@
   $('navigation').innerHTML = NAV.map(([name,icon])=>`<button type="button" data-view="${e(name)}"><i>${e(icon)}</i>${e(name)}</button>`).join('');
    const baseSetView=setView;
    setView=function(next,options={}){baseSetView(next);if(!options.skipUrl)writeShareState(options.push===true);};
-   window.addEventListener?.('popstate',()=>{readShareState();const scope=new URLSearchParams(window.location?.search||'').get('scope');setView(scope==='india'?'Overview':'Bengaluru Jobs',{skipUrl:true});if(scope!=='india')loadCatalog();});
+   window.addEventListener?.('popstate',()=>{readShareState();const scope=requestedScope();setView(scope==='india'?'Overview':'Bengaluru Jobs',{skipUrl:true});if(scope!=='india')loadCatalog();});
    readShareState();
-   const initialScope=new URLSearchParams(window.location?.search||'').get('scope');
+   const initialScope=requestedScope();
    setView(initialScope==='india'?'Overview':'Bengaluru Jobs');
     if(initialScope!=='india')loadCatalog();
    loadMetadata();
