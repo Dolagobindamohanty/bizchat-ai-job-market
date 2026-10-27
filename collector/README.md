@@ -17,7 +17,8 @@ actors, plus Curious Coder's LinkedIn actor as an explicitly separate
 `linkedin-rich` source. Do not configure both LinkedIn actors for the same
 search unless the duplicate cost is intentional.
 
-Copy and review `collector/apify.india.example.json`, then run:
+Copy and review `collector/apify.india.example.json`, then run the initial
+30-result-per-actor Bengaluru pilot:
 
 ```sh
 set APIFY_API_TOKEN=your-token
@@ -30,7 +31,9 @@ python -m collector.cli --output data/raw/jobs-live.csv \
 The repository also includes a **manual-only** GitHub Actions workflow at
 `.github/workflows/apify-refresh.yml`. Add the `APIFY_API_TOKEN` repository
 secret and start it from the Actions tab when you have confirmed the actors'
-terms and want to collect a paid run. It is not scheduled by default.
+terms and reviewed each actor's estimated Store cost. The workflow requires an
+explicit paid-run confirmation and a cost estimate before it starts. It is not
+scheduled by default.
 
 Each actor runs independently. A failed actor is reported without discarding
 successful actors; publication requires `--allow-partial` when any configured

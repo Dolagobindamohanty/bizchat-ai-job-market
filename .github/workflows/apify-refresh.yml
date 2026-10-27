@@ -2,6 +2,16 @@ name: Optional Apify job refresh
 
 on:
   workflow_dispatch:
+    inputs:
+      confirm_paid_run:
+        description: "I reviewed actor pricing, portal terms, and the run cost"
+        required: true
+        type: boolean
+        default: false
+      estimated_cost_usd:
+        description: "Estimated Store cost shown before starting the run (USD)"
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -15,6 +25,21 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
+      - name: Require paid-run review
+        env:
+          CONFIRM_PAID_RUN: ${{ inputs.confirm_paid_run }}
+          ESTIMATED_COST_USD: ${{ inputs.estimated_cost_usd }}
+        run: |
+          if [ "$CONFIRM_PAID_RUN" != "true" ]; then
+            echo "Set confirm_paid_run only after reviewing pricing and portal terms."
+            exit 1
+          fi
+          if [ -z "$ESTIMATED_COST_USD" ]; then
+            echo "Enter the Store's displayed estimated cost before starting."
+            exit 1
+          fi
+          echo "Reviewed Store estimate: $ESTIMATED_COST_USD USD"
+
       - name: Check out main
         uses: actions/checkout@v4
         with:
