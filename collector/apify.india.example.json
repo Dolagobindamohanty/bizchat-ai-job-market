@@ -3,6 +3,7 @@
     {
       "source": "naukri",
       "actor": "valig/naukri-jobs-scraper",
+      "max_total_charge_usd": 0.05,
       "input": {
         "keywords": "software engineer machine learning data scientist",
         "location": "Bengaluru",
@@ -14,6 +15,7 @@
     {
       "source": "linkedin",
       "actor": "valig/linkedin-jobs-scraper",
+      "max_total_charge_usd": 0.05,
       "input": {
         "keywords": "software engineer machine learning data scientist",
         "location": "Bengaluru, Karnataka, India",
@@ -25,6 +27,7 @@
     {
       "source": "indeed",
       "actor": "valig/indeed-jobs-scraper",
+      "max_total_charge_usd": 0.05,
       "input": {
         "country": "in",
         "title": "software engineer machine learning data scientist",

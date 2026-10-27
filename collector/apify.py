@@ -14,7 +14,6 @@ import math
 import re
 from datetime import datetime, timezone
 from html import unescape
-from html.parser import HTMLParser
 from typing import Any, Callable
 from urllib.parse import quote, urlencode, urlsplit
 from urllib.request import Request, urlopen
@@ -26,11 +25,14 @@ APIFY_API = "https://api.apify.com/v2"
 MAX_ACTORS = 4
 MAX_ITEMS = 5_000
 MAX_RESPONSE_BYTES = 32 * 1024 * 1024
+DEFAULT_MAX_TOTAL_CHARGE_USD = 0.05
 APIFY_ACTORS = {
     "naukri": "valig/naukri-jobs-scraper",
     "linkedin": "valig/linkedin-jobs-scraper",
     "linkedin-rich": "curious_coder/linkedin-jobs-scraper",
     "indeed": "valig/indeed-jobs-scraper",
+    "naukri-thirdwatch": "thirdwatch/naukri-jobs-scraper",
+    "linkedin-rapid": "worldunboxer/rapid-linkedin-scraper",
 }
 SOURCES = set(APIFY_ACTORS)
 
@@ -88,25 +90,28 @@ def _url(value: Any) -> str:
 
 
 def _description(item: dict[str, Any]) -> str | None:
-    value = _first(item, "description", "descriptionText", "description_text", "jobDescription", "job_description", "content")
+    value = _first(item, "description", "descriptionText", "description_text", "jobDescription", "job_description", "job_description_raw_html", "content")
     if isinstance(value, dict):
-        value = _first(value, "text", "html", "value")
+        value = _first(value, "full", "text", "html", "value")
     text = _text(value)
     return _strip_html(unescape(text)) if text else None
 
 
 def _location(item: dict[str, Any]) -> str:
-    value = _first(item, "location", "locations", "jobLocation", "job_location", "city")
+    value = _first(item, "location", "locations", "jobLocation", "job_location", "city", "searched_location")
     if isinstance(value, list):
         values = []
         for part in value:
             if isinstance(part, dict):
-                part = _first(part, "name", "city", "location", "displayName", "display_name")
+                part = _first(part, "name", "city", "location", "displayName", "display_name", "label")
             if _text(part):
                 values.append(_text(part))
         return "; ".join(dict.fromkeys(values))
     if isinstance(value, dict):
-        value = _first(value, "name", "city", "displayName", "display_name", "address")
+        address = value.get("address") if isinstance(value.get("address"), dict) else None
+        value = _first(value, "name", "city", "displayName", "display_name", "label")
+        if not value and address:
+            value = _first(address, "city", "addressLocality", "addressRegion", "addressCountry")
     return _text(value) or "Unknown"
 
 
@@ -120,25 +125,68 @@ def _number(value: Any) -> float | None:
     return number if math.isfinite(number) else None
 
 
-def _salary(item: dict[str, Any]) -> tuple[float | None, float | None]:
+def _salary_text_values(text: str) -> tuple[float | None, float | None]:
+    if not text:
+        return None, None
+    values = [float(value.replace(",", "")) for value in re.findall(r"\d[\d,]*(?:\.\d+)?", text)]
+    if not values:
+        return None, None
+    if re.search(r"(?:lpa|lakhs?|lac|lakh)", text, re.I):
+        return values[0], values[-1]
+    if re.search(r"(?:₹|inr|rs\.?|rupees?)", text, re.I):
+        return values[0] / 100_000, values[-1] / 100_000
+    return None, None
+
+
+def _salary(source: str, item: dict[str, Any]) -> tuple[float | None, float | None]:
     minimum = _number(_first(item, "salary_min_lpa", "salaryMinLpa", "min_salary_lpa"))
     maximum = _number(_first(item, "salary_max_lpa", "salaryMaxLpa", "max_salary_lpa"))
-    salary = _first(item, "salary", "salaryRange", "salary_range")
+    raw_minimum = _number(_first(item, "salary_min", "salaryMin", "min_salary"))
+    raw_maximum = _number(_first(item, "salary_max", "salaryMax", "max_salary"))
+    if source in {"naukri", "naukri-thirdwatch"}:
+        minimum = minimum if minimum is not None else (raw_minimum / 100_000 if raw_minimum is not None else None)
+        maximum = maximum if maximum is not None else (raw_maximum / 100_000 if raw_maximum is not None else None)
+    salary = _first(item, "salary", "salaryRange", "salary_range", "salary_raw")
+    salary_object = salary if isinstance(salary, dict) else _first(item, "baseSalary")
+    currency = _text(_first(salary_object or {}, "currency", "currencyCode", "currency_code")).casefold() if isinstance(salary_object, dict) else ""
+    if source in {"naukri", "naukri-thirdwatch"} and isinstance(salary, dict):
+        minimum = minimum if minimum is not None else _number(_first(salary, "min", "minimum"))
+        maximum = maximum if maximum is not None else _number(_first(salary, "max", "maximum"))
+        if minimum is not None:
+            minimum /= 100_000
+        if maximum is not None:
+            maximum /= 100_000
+    elif isinstance(salary_object, dict):
+        minimum = minimum if minimum is not None else _number(_first(salary_object, "min", "minimum"))
+        maximum = maximum if maximum is not None else _number(_first(salary_object, "max", "maximum"))
+        if currency not in {"inr", "₹", "rs", "rupee", "rupees"}:
+            minimum = maximum = None
+        else:
+            if minimum is not None:
+                minimum /= 100_000
+            if maximum is not None:
+                maximum /= 100_000
     if (minimum is None or maximum is None) and isinstance(salary, dict):
-        minimum = minimum if minimum is not None else _number(_first(salary, "min", "minimum", "minLpa", "min_lpa"))
-        maximum = maximum if maximum is not None else _number(_first(salary, "max", "maximum", "maxLpa", "max_lpa"))
+        minimum = minimum if minimum is not None else _number(_first(salary, "minLpa", "min_lpa"))
+        maximum = maximum if maximum is not None else _number(_first(salary, "maxLpa", "max_lpa"))
     if minimum is None or maximum is None:
-        text = _text(salary)
-        if re.search(r"(?:lpa|lakhs?|lac)", text, re.I):
-            values = [float(value) for value in re.findall(r"\d+(?:\.\d+)?", text)]
-            if values:
-                minimum = minimum if minimum is not None else values[0]
-                maximum = maximum if maximum is not None else values[-1]
+        parsed_minimum, parsed_maximum = _salary_text_values(_text(salary))
+        minimum = minimum if minimum is not None else parsed_minimum
+        maximum = maximum if maximum is not None else parsed_maximum
     return minimum, maximum
 
 
 def _remote(item: dict[str, Any], description: str | None) -> str | None:
-    value = _text(_first(item, "work_mode", "workMode", "remote", "remoteType", "workplaceType", "workplace_type"))
+    value = _first(item, "work_mode", "workMode", "remote", "remoteType", "workplaceType", "workplace_type", "wfhType")
+    if isinstance(value, list):
+        value = ", ".join(_text(part) for part in value)
+    if value in ("0", 0):
+        value = "On-site"
+    elif value in ("2", 2):
+        value = "Remote"
+    elif value in ("3", 3):
+        value = "Hybrid"
+    value = _text(value)
     text = f"{value} {description or ''}".casefold()
     if "hybrid" in text:
         return "Hybrid"
@@ -147,6 +195,21 @@ def _remote(item: dict[str, Any], description: str | None) -> str | None:
     if any(term in text for term in ("on-site", "onsite", "office", "in office")):
         return "On-site"
     return None
+
+
+def _experience(item: dict[str, Any]) -> tuple[float | None, float | None]:
+    minimum = _number(_first(item, "experience_min", "experienceMin", "min_experience"))
+    maximum = _number(_first(item, "experience_max", "experienceMax", "max_experience"))
+    value = _first(item, "experience", "experience_required", "experienceLevel")
+    if isinstance(value, dict):
+        minimum = minimum if minimum is not None else _number(_first(value, "minimum", "min", "minYears"))
+        maximum = maximum if maximum is not None else _number(_first(value, "maximum", "max", "maxYears"))
+        value = _first(value, "text", "label")
+    if minimum is None or maximum is None:
+        values = [float(part) for part in re.findall(r"\d+(?:\.\d+)?", _text(value))]
+        minimum = minimum if minimum is not None and minimum <= 30 else (values[0] if values else None)
+        maximum = maximum if maximum is not None and maximum <= 30 else (values[-1] if values else None)
+    return minimum, maximum
 
 
 def _matches(location: str, keywords: list[str]) -> bool:
@@ -172,15 +235,20 @@ def normalize_apify_item(source: str, item: dict[str, Any], *, collected_at: str
     company = _text(company_value.get("name") if isinstance(company_value, dict) else company_value) or "Not provided by employer"
     location = _location(item)
     description = _description(item)
-    source_url = _url(_first(item, "source_url", "url", "jobUrl", "job_url", "applyUrl", "apply_url", "link", "jobLink", "job_link"))
+    source_url = _url(_first(item, "source_url", "apply_url", "external_apply_url", "applyUrl", "jobUrl", "job_url", "url", "link", "jobLink", "job_link"))
     if not title or not source_url:
         return None
-    posted = _date(_first(item, "posted_date", "postedDate", "posted_at", "postedAt", "datePosted", "date_posted", "publishedAt", "createdAt", "created_at"))
-    minimum, maximum = _salary(item)
+    posted = _date(_first(item, "posted_date", "postedDate", "posted_at", "postedAt", "datePosted", "date_posted", "publishedAt", "datePublished", "createdAt", "created_at", "createdDateText", "scraped_at"))
+    minimum, maximum = _salary(source, item)
+    experience_min, experience_max = _experience(item)
     now = collected_at or datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    salary_value = _first(item, "salary", "salaryText", "salary_text", "salary_range", "salary_raw")
+    if isinstance(salary_value, dict):
+        salary_value = _first(salary_value, "label", "text", "raw")
+    company_name = company_value.get("name") if isinstance(company_value, dict) else company_value
     row = _record(source, item, source_job_id=_stable_id(source, item, source_url, title, company, location, posted),
-                  source_url=source_url, title=title, company=company, location=location,
-                  description=description, posted_date=posted, salary=_text(_first(item, "salary", "salaryText", "salary_text")),
+                  source_url=source_url, title=title, company=company_name, location=location,
+                  description=description, posted_date=posted, salary=_text(salary_value),
                   remote=_remote(item, description))
     row.update({
         "source_type": "third_party_collector",
@@ -191,8 +259,16 @@ def normalize_apify_item(source: str, item: dict[str, Any], *, collected_at: str
         "employment_type": _text(_first(item, "job_type", "jobType", "employmentType", "employment_type")) or None,
         "salary_min_lpa": minimum,
         "salary_max_lpa": maximum,
+        "experience_min": experience_min,
+        "experience_max": experience_max,
         "raw_source_job_id": row["source_job_id"].split(":", 1)[-1],
     })
+    skills = _first(item, "skills", "skill", "requiredSkills")
+    if isinstance(skills, dict):
+        skills = [part for key in ("preferred", "other", "required") for part in (skills.get(key) or [])]
+    if isinstance(skills, list):
+        row["skills"] = list(dict.fromkeys(_text(skill) for skill in skills if _text(skill)))
+    row["job_type"] = _text(_first(item, "job_type", "jobType", "employmentType", "employment_type", "contractType")) or None
     return row
 
 
@@ -204,8 +280,8 @@ def _validate_config(config: Any) -> dict[str, Any]:
         raise ApifyConfigError(f"Apify config requires between 1 and {MAX_ACTORS} actors")
     normalized, seen = [], set()
     for actor in actors:
-        if not isinstance(actor, dict) or set(actor) - {"source", "actor", "input", "enabled"}:
-            raise ApifyConfigError("each Apify actor requires source, actor, input, and optional enabled")
+        if not isinstance(actor, dict) or set(actor) - {"source", "actor", "input", "enabled", "max_total_charge_usd"}:
+            raise ApifyConfigError("each Apify actor requires source, actor, input, and optional enabled/max_total_charge_usd")
         source = actor.get("source")
         if source not in SOURCES or source in seen:
             raise ApifyConfigError("actor sources must be unique and supported")
@@ -215,8 +291,12 @@ def _validate_config(config: Any) -> dict[str, Any]:
             raise ApifyConfigError("actor input must be an object")
         if actor.get("enabled", True) not in (True, False):
             raise ApifyConfigError("actor enabled must be boolean")
+        charge_cap = actor.get("max_total_charge_usd", DEFAULT_MAX_TOTAL_CHARGE_USD)
+        if isinstance(charge_cap, bool) or not isinstance(charge_cap, (int, float)) or not math.isfinite(charge_cap) or charge_cap <= 0 or charge_cap > 5:
+            raise ApifyConfigError("max_total_charge_usd must be greater than 0 and at most 5")
         seen.add(source)
-        normalized.append({"source": source, "actor": actor["actor"], "input": actor["input"], "enabled": actor.get("enabled", True)})
+        normalized.append({"source": source, "actor": actor["actor"], "input": actor["input"],
+                           "enabled": actor.get("enabled", True), "max_total_charge_usd": float(charge_cap)})
     keywords = config.get("location_keywords", [])
     if not isinstance(keywords, list) or not all(isinstance(value, str) and value.strip() for value in keywords):
         raise ApifyConfigError("location_keywords must be a list of non-empty strings")
@@ -231,11 +311,13 @@ def load_apify_config(path: Any) -> dict[str, Any]:
     return _validate_config(config)
 
 
-def _http_runner(actor: str, payload: dict[str, Any], token: str, timeout: float) -> list[dict[str, Any]]:
+def _http_runner(actor: str, payload: dict[str, Any], token: str, timeout: float,
+                 *, max_total_charge_usd: float = DEFAULT_MAX_TOTAL_CHARGE_USD) -> list[dict[str, Any]]:
     if not token.strip():
         raise ProviderError("APIFY_API_TOKEN is required")
     headers = {"Accept": "application/json", "Content-Type": "application/json", "Authorization": f"Bearer {token}"}
-    actor_url = f"{APIFY_API}/acts/{quote(actor, safe='')}/runs?{urlencode({'waitForFinish': '120'})}"
+    actor_id = actor.replace("/", "~")
+    actor_url = f"{APIFY_API}/acts/{quote(actor_id, safe='~')}/runs?{urlencode({'waitForFinish': '120', 'maxTotalChargeUsd': f'{max_total_charge_usd:.4f}'})}"
     request = Request(actor_url, data=json.dumps(payload).encode(), headers=headers, method="POST")
     try:
         with urlopen(request, timeout=timeout) as response:
@@ -263,12 +345,19 @@ def collect_apify_sources(config: dict[str, Any], *, token: str | None = None, t
     actual_runner = runner or _http_runner
     rows, reports = [], []
     for actor in config["actors"]:
-        report = {"source": actor["source"], "actor": actor["actor"], "status": "skipped" if not actor["enabled"] else "ok", "jobs": 0, "invalid_jobs": 0, "error": None}
+        report = {"source": actor["source"], "actor": actor["actor"],
+                  "max_total_charge_usd": actor["max_total_charge_usd"],
+                  "status": "skipped" if not actor["enabled"] else "ok", "jobs": 0,
+                  "invalid_jobs": 0, "error": None}
         if not actor["enabled"]:
             reports.append(report)
             continue
         try:
-            items = actual_runner(actor["actor"], actor["input"], token or "", timeout)
+            if runner is None:
+                items = _http_runner(actor["actor"], actor["input"], token or "", timeout,
+                                     max_total_charge_usd=actor["max_total_charge_usd"])
+            else:
+                items = actual_runner(actor["actor"], actor["input"], token or "", timeout)
             normalized = [normalize_apify_item(actor["source"], item) for item in items]
             valid = [row for row in normalized if row is not None and _matches(row["location"], config["location_keywords"])]
             invalid = len(items) - sum(item is not None for item in normalized)

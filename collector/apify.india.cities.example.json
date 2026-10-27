@@ -3,6 +3,7 @@
     {
       "source": "naukri",
       "actor": "valig/naukri-jobs-scraper",
+      "max_total_charge_usd": 0.05,
       "input": {
         "keywords": "software engineer machine learning data scientist",
         "location": "Hyderabad",

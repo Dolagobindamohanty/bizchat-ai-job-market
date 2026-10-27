@@ -1,0 +1,18 @@
+{
+  "actors": [
+    {
+      "source": "linkedin-rapid",
+      "actor": "worldunboxer/rapid-linkedin-scraper",
+      "max_total_charge_usd": 0.05,
+      "input": {
+        "jobs_titles": ["Software Engineer", "Machine Learning", "Data Scientist"],
+        "location": "India",
+        "cities": ["Bengaluru"],
+        "posted_within": "Past Week",
+        "jobs_entries": 30,
+        "scrape_mode": "detailed"
+      }
+    }
+  ],
+  "location_keywords": ["India", "Bengaluru", "Bangalore"]
+}

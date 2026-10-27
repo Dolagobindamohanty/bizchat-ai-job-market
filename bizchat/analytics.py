@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Iterable
 from datetime import date
@@ -112,7 +113,19 @@ def prepare_jobs(df: pd.DataFrame) -> pd.DataFrame:
     result["posted_date"] = pd.to_datetime(result["posted_date"], errors="coerce")
     result["collected_at"] = pd.to_datetime(result["collected_at"], errors="coerce", utc=True)
     result["salary_mid_lpa"] = (result["salary_min_lpa"] + result["salary_max_lpa"]) / 2
-    result["skills"] = (result["title"].fillna("") + " " + result["description"].fillna("")).map(extract_skills)
+    def skills_for_row(row: pd.Series) -> list[str]:
+        explicit = row.get("skills")
+        if isinstance(explicit, str):
+            try:
+                explicit = json.loads(explicit)
+            except (TypeError, ValueError):
+                explicit = []
+        if not isinstance(explicit, list):
+            explicit = []
+        values = [str(value).strip() for value in explicit if str(value).strip()]
+        derived = extract_skills(f"{row.get('title', '')} {row.get('description', '')}")
+        return list(dict.fromkeys(values + derived))
+    result["skills"] = result.apply(skills_for_row, axis=1)
     result["skill_count"] = result["skills"].str.len()
     result["role_type"] = result["title"].fillna("").map(role_type)
     result["experience_level"] = result["experience_min"].map(experience_level)

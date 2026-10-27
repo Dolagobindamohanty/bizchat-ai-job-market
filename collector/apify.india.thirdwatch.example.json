@@ -1,0 +1,21 @@
+{
+  "actors": [
+    {
+      "source": "naukri-thirdwatch",
+      "actor": "thirdwatch/naukri-jobs-scraper",
+      "max_total_charge_usd": 0.05,
+      "input": {
+        "platform": "naukri",
+        "queries": ["software engineer", "machine learning", "data scientist"],
+        "location": "Bengaluru",
+        "maxResultsPerQuery": 10,
+        "sortBy": "date",
+        "freshnessDays": "7",
+        "includeNaukriDetails": true,
+        "includeDescription": true,
+        "monitorMode": "off"
+      }
+    }
+  ],
+  "location_keywords": ["India", "Bengaluru", "Bangalore"]
+}

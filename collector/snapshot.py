@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import json
 import os
 import tempfile
 from datetime import date, datetime, timedelta
@@ -11,7 +12,7 @@ from typing import Iterable
 
 from collector.validate import validate
 
-SNAPSHOT_COLUMNS = ["job_id", "source_job_id", "title", "company", "location", "description", "posted_date", "collected_at", "salary", "salary_is_predicted", "remote", "remote_type", "salary_min_lpa", "salary_max_lpa", "source", "source_url", "source_type", "employment_type", "listing_status", "verification_status", "last_verified_at", "raw_source_job_id"]
+SNAPSHOT_COLUMNS = ["job_id", "source_job_id", "title", "company", "location", "description", "posted_date", "collected_at", "salary", "salary_is_predicted", "remote", "remote_type", "salary_min_lpa", "salary_max_lpa", "experience_min", "experience_max", "skills", "job_type", "source", "source_url", "source_type", "employment_type", "listing_status", "verification_status", "last_verified_at", "raw_source_job_id"]
 
 
 def filter_recent_rows(rows: Iterable[dict], max_age_days: int | None, *, today: date | None = None) -> list[dict]:
@@ -58,7 +59,7 @@ def write_snapshot(rows: Iterable[dict], path: Path, *, allow_empty: bool = Fals
         with temporary.open("w", newline="", encoding="utf-8") as handle:
             writer = csv.DictWriter(handle, fieldnames=SNAPSHOT_COLUMNS, extrasaction="ignore")
             writer.writeheader()
-            writer.writerows({column: row.get(column, "") for column in SNAPSHOT_COLUMNS} for row in unique.values())
+            writer.writerows({column: json.dumps(row.get(column), ensure_ascii=False) if isinstance(row.get(column), (list, dict)) else row.get(column, "") for column in SNAPSHOT_COLUMNS} for row in unique.values())
         validate(temporary)
         os.replace(temporary, path)
     finally:

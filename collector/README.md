@@ -14,8 +14,10 @@ Apify actors are separate, opt-in third-party adapters. They require an
 `APIFY_API_TOKEN` and an explicit config; the application API never runs them.
 The approved configurations include ValiG's Naukri, LinkedIn, and Indeed
 actors, plus Curious Coder's LinkedIn actor as an explicitly separate
-`linkedin-rich` source. Do not configure both LinkedIn actors for the same
-search unless the duplicate cost is intentional.
+`linkedin-rich` source. The Store review also identified optional
+`thirdwatch/naukri-jobs-scraper` and `worldunboxer/rapid-linkedin-scraper`
+configs. Do not configure both LinkedIn actors for the same search unless the
+duplicate cost is intentional.
 
 Copy and review `collector/apify.india.example.json`, then run the initial
 30-result-per-actor Bengaluru pilot:
@@ -34,6 +36,25 @@ secret and start it from the Actions tab when you have confirmed the actors'
 terms and reviewed each actor's estimated Store cost. The workflow requires an
 explicit paid-run confirmation and a cost estimate before it starts. It is not
 scheduled by default.
+
+For the optional alternatives, review and run one at a time:
+
+```sh
+python -m collector.cli --output data/raw/jobs-live.csv \
+  --apify-config collector/apify.india.thirdwatch.example.json \
+  --report data/apify-collection-report.json \
+  --max-posted-age-days 30 --allow-partial
+
+python -m collector.cli --output data/raw/jobs-live.csv \
+  --apify-config collector/apify.india.rapid-linkedin.example.json \
+  --report data/apify-collection-report.json \
+  --max-posted-age-days 30 --allow-partial
+```
+
+Each actor configuration carries a `max_total_charge_usd` run cap. This is
+sent to Apify as a billing query parameter, never as actor input. The default
+pilot cap is `$0.05` per actor run; confirm the current Store pricing and
+estimated cost in the Console before changing it or starting a run.
 
 Each actor runs independently. A failed actor is reported without discarding
 successful actors; publication requires `--allow-partial` when any configured
