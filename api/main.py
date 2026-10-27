@@ -117,6 +117,11 @@ class JobListing(BaseModel):
     age_days: int | None
     last_verified: str | None = None
     collected_at: str | None = None
+    source_type: str | None = None
+    employment_type: str | None = None
+    listing_status: str | None = None
+    verification_status: str | None = None
+    last_verified_at: str | None = None
 
 
 class JobsResponse(BaseModel):

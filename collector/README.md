@@ -1,10 +1,47 @@
 # Safe daily collector boundary
 
-The collector uses documented JSON APIs only. It does **not** scrape websites,
-log in to portals, or bypass CAPTCHAs or robots controls. Run
+The built-in collector adapters use documented JSON APIs only. They do **not**
+scrape websites, log in to portals, or bypass CAPTCHAs or robots controls. The
+separate Apify adapter delegates collection to an explicitly selected actor and
+is opt-in, manual-only, and subject to the actor and portal terms. Run
 `python -m collector.cli --output data/raw/jobs-live.csv` to fetch Arbeitnow and
 the optional Adzuna provider and write a validated snapshot. Adzuna is enabled
 only when `ADZUNA_APP_ID` and `ADZUNA_APP_KEY` are present in the environment.
+
+## Optional Apify actor adapters
+
+Apify actors are separate, opt-in third-party adapters. They require an
+`APIFY_API_TOKEN` and an explicit config; the application API never runs them.
+The approved configurations include ValiG's Naukri, LinkedIn, and Indeed
+actors, plus Curious Coder's LinkedIn actor as an explicitly separate
+`linkedin-rich` source. Do not configure both LinkedIn actors for the same
+search unless the duplicate cost is intentional.
+
+Copy and review `collector/apify.india.example.json`, then run:
+
+```sh
+set APIFY_API_TOKEN=your-token
+python -m collector.cli --output data/raw/jobs-live.csv \
+  --apify-config collector/apify.india.example.json \
+  --report data/apify-collection-report.json \
+  --max-posted-age-days 30 --allow-partial
+```
+
+The repository also includes a **manual-only** GitHub Actions workflow at
+`.github/workflows/apify-refresh.yml`. Add the `APIFY_API_TOKEN` repository
+secret and start it from the Actions tab when you have confirmed the actors'
+terms and want to collect a paid run. It is not scheduled by default.
+
+Each actor runs independently. A failed actor is reported without discarding
+successful actors; publication requires `--allow-partial` when any configured
+actor fails. Records are labelled `source_type=third_party_collector`, retain
+source-specific IDs and HTTPS URLs, and use `listing_status=unknown` and
+`verification_status=observed`. “Recent” means recently collected/posted; it
+does not mean the employer page was independently checked or that the role is
+still open. Review each actor's current pricing, portal terms, attribution
+requirements, and commercial-use permissions before public operation. The
+adapter intentionally does not retain recruiter profiles, photos, employee
+counts, reviews, or other unnecessary personal/company enrichment.
 
 ## Greenhouse Job Board API
 

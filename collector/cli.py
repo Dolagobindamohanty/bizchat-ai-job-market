@@ -3,6 +3,7 @@
 import argparse
 import json
 import logging
+import os
 from pathlib import Path
 
 from collector.providers import collect_enabled_providers, load_greenhouse_config
@@ -26,25 +27,42 @@ def main() -> None:
                         help="Use only the configured Greenhouse boards; skip Arbeitnow and Adzuna")
     parser.add_argument("--sources-config", type=Path,
                         help="Explicit Greenhouse/Lever/Ashby boards; skips Arbeitnow and Adzuna")
+    parser.add_argument("--apify-config", type=Path,
+                        help="Explicit opt-in Apify actor config; requires APIFY_API_TOKEN")
     parser.add_argument("--allow-partial", action="store_true",
                         help="Allow publishing sources-config results when some boards fail")
     parser.add_argument("--report", type=Path, help="Write a safe JSON per-board collection summary")
     args = parser.parse_args()
-    if args.sources_config and (args.greenhouse_config or args.greenhouse_only):
-        parser.error("--sources-config is mutually exclusive with --greenhouse-config and --greenhouse-only")
-    if (args.allow_partial or args.report) and not args.sources_config:
-        parser.error("--allow-partial and --report require --sources-config")
+    if (args.sources_config or args.apify_config) and (args.greenhouse_config or args.greenhouse_only):
+        parser.error("--sources-config/--apify-config are mutually exclusive with --greenhouse-config and --greenhouse-only")
+    if (args.allow_partial or args.report) and not (args.sources_config or args.apify_config):
+        parser.error("--allow-partial and --report require --sources-config or --apify-config")
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")
-    if args.sources_config:
+    if args.sources_config or args.apify_config:
         from collector.multisource import load_sources_config
+        from collector.apify import load_apify_config, collect_apify_sources
 
         # A report must never overwrite the snapshot or its input configuration.
-        if args.report and args.report.resolve() in {args.output.resolve(), args.sources_config.resolve()}:
+        input_paths = {args.output.resolve()}
+        if args.sources_config:
+            input_paths.add(args.sources_config.resolve())
+        if args.apify_config:
+            input_paths.add(args.apify_config.resolve())
+        if args.report and args.report.resolve() in input_paths:
             parser.error("--report must differ from --output and --sources-config")
-        config = load_sources_config(args.sources_config)
-        rows, reports = collect_sources(config, timeout=args.timeout)
+        rows, reports = [], []
+        if args.sources_config:
+            config = load_sources_config(args.sources_config)
+            official_rows, official_reports = collect_sources(config, timeout=args.timeout)
+            rows.extend(official_rows)
+            reports.extend(official_reports)
+        if args.apify_config:
+            apify_config = load_apify_config(args.apify_config)
+            apify_rows, apify_reports = collect_apify_sources(apify_config, token=os.getenv("APIFY_API_TOKEN"), timeout=args.timeout)
+            rows.extend(apify_rows)
+            reports.extend(apify_reports)
         rows = filter_recent_rows(rows, args.max_posted_age_days)
-        failed = any(report["status"] != "ok" for report in reports)
+        failed = any(report["status"] not in {"ok", "skipped"} for report in reports)
         if args.report:
             args.report.parent.mkdir(parents=True, exist_ok=True)
             args.report.write_text(json.dumps({"boards": reports, "jobs": len(rows),

@@ -1,0 +1,38 @@
+{
+  "actors": [
+    {
+      "source": "naukri",
+      "actor": "valig/naukri-jobs-scraper",
+      "input": {
+        "keywords": "software engineer machine learning data scientist",
+        "location": "Bengaluru",
+        "sort": "f",
+        "jobAge": "7",
+        "limit": 100
+      }
+    },
+    {
+      "source": "linkedin",
+      "actor": "valig/linkedin-jobs-scraper",
+      "input": {
+        "keywords": "software engineer machine learning data scientist",
+        "location": "Bengaluru, Karnataka, India",
+        "datePosted": "r604800",
+        "limit": 100,
+        "titleInclude": ["Software Engineer", "Machine Learning", "Data Scientist"]
+      }
+    },
+    {
+      "source": "indeed",
+      "actor": "valig/indeed-jobs-scraper",
+      "input": {
+        "country": "in",
+        "title": "software engineer machine learning data scientist",
+        "location": "Bengaluru",
+        "limit": 100,
+        "datePosted": "7"
+      }
+    }
+  ],
+  "location_keywords": ["India", "Bengaluru", "Bangalore", "Hyderabad", "Pune", "Mumbai", "Chennai", "Delhi", "Gurugram", "Noida", "Kolkata"]
+}

@@ -1,0 +1,16 @@
+{
+  "actors": [
+    {
+      "source": "naukri",
+      "actor": "valig/naukri-jobs-scraper",
+      "input": {
+        "keywords": "software engineer machine learning data scientist",
+        "location": "Hyderabad",
+        "sort": "f",
+        "jobAge": "7",
+        "limit": 100
+      }
+    }
+  ],
+  "location_keywords": ["India", "Bengaluru", "Bangalore", "Hyderabad", "Pune", "Mumbai", "Chennai", "Delhi", "Gurugram", "Noida", "Kolkata"]
+}

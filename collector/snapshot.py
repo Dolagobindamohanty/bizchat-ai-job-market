@@ -11,7 +11,7 @@ from typing import Iterable
 
 from collector.validate import validate
 
-SNAPSHOT_COLUMNS = ["job_id", "source_job_id", "title", "company", "location", "description", "posted_date", "collected_at", "salary", "salary_is_predicted", "remote", "remote_type", "salary_min_lpa", "salary_max_lpa", "source", "source_url"]
+SNAPSHOT_COLUMNS = ["job_id", "source_job_id", "title", "company", "location", "description", "posted_date", "collected_at", "salary", "salary_is_predicted", "remote", "remote_type", "salary_min_lpa", "salary_max_lpa", "source", "source_url", "source_type", "employment_type", "listing_status", "verification_status", "last_verified_at", "raw_source_job_id"]
 
 
 def filter_recent_rows(rows: Iterable[dict], max_age_days: int | None, *, today: date | None = None) -> list[dict]:
