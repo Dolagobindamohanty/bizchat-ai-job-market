@@ -367,6 +367,33 @@ def test_cli_failure_report_is_written_before_publication_guard(tmp_path, monkey
     assert json.loads(report.read_text(encoding="utf-8"))["complete"] is False
 
 
+@pytest.mark.parametrize("empty_refresh", [False, True])
+def test_cli_preserves_only_uncollected_recent_sources(tmp_path, monkeypatch, empty_refresh):
+    path, output = (tmp_path / name for name in ["sources.json", "jobs.csv"])
+    path.write_text(json.dumps(config()), encoding="utf-8")
+    rows, _ = collect_sources(config(), http_get=lambda *_: payload("lever"))
+    old = dict(rows[0], posted_date=date.today().isoformat())
+    preserved = dict(old, source="naukri", source_type="third_party_collector",
+                     verification_status="observed")
+    stale = dict(preserved, source_job_id="stale", job_id="stale", posted_date="2000-01-01")
+    unknown = dict(preserved, source_job_id="unknown", job_id="unknown", posted_date="")
+    write_snapshot([old, preserved, stale, unknown], output)
+    refreshed = dict(old, title="Refreshed title")
+    monkeypatch.setattr(cli, "collect_sources", lambda *_, **kw: (
+        [] if empty_refresh else [refreshed], [{"status": "ok"}]))
+    monkeypatch.setattr(sys, "argv", ["collector", "--sources-config", str(path), "--output", str(output),
+                                     "--preserve-uncollected-sources", "--max-posted-age-days", "30"])
+    cli.main()
+    with output.open(newline="", encoding="utf-8") as handle:
+        saved = list(csv.DictReader(handle))
+    retained = next(row for row in saved if row["source"] == "naukri")
+    assert retained["collected_at"] == preserved["collected_at"]
+    assert retained["verification_status"] == "observed"
+    assert len(saved) == (1 if empty_refresh else 2)
+    if not empty_refresh:
+        assert next(row for row in saved if row["source"] == "lever")["title"] == "Refreshed title"
+
+
 def test_cli_explicit_partial_flag_publishes_only_successful_boards(tmp_path, monkeypatch):
     path, output = (tmp_path / name for name in ["sources.json", "jobs.csv"])
     path.write_text(json.dumps(config(board(), board("ashby"))), encoding="utf-8")

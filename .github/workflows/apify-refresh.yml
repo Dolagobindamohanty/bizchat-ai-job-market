@@ -17,7 +17,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: apify-refresh
+  group: jobs-snapshot-refresh
   cancel-in-progress: false
 
 jobs:

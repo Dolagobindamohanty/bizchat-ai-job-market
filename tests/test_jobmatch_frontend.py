@@ -104,6 +104,36 @@ def test_script_order_navigation_default_and_background_editor_focus():
     """)
 
 
+@pytest.mark.parametrize("failure", ["503", "network", "timeout"])
+def test_live_reads_recover_from_cold_start_without_replaying_posts(failure):
+    run_scenario("const failure=" + repr(failure) + ";" + r"""
+      await tick();
+      const delays=[];
+      context.setTimeout=(fn,ms)=>{delays.push(ms);if(ms===1500)Promise.resolve().then(fn);return 0;};
+      context.clearTimeout=()=>{};
+      let attempts=0;
+      context.fetch=async()=>{
+        if(++attempts===1){
+          if(failure==='network')throw new TypeError('Failed to fetch');
+          if(failure==='timeout')throw Object.assign(new Error('Aborted'),{name:'AbortError'});
+          return response({},503);
+        }
+        return response({items:[],total:0});
+      };
+      const recovered=await run("fetchAPI('/jobs?page_size=100')");
+      assert.equal(recovered.status,200);assert.equal(attempts,2);
+      assert.deepEqual(delays,[60000,1500,60000]);
+      attempts=0;delays.length=0;
+      try{const result=await run("fetchAPI('/resume/match',{method:'POST'})");assert.equal(result.status,503);}
+      catch(error){assert(['TypeError','AbortError'].includes(error.name));}
+      assert.equal(attempts,1);assert.deepEqual(delays,[15000]);
+      attempts=0;context.fetch=async()=>{attempts++;return response({},422);};
+      assert.equal((await run("fetchAPI('/jobs')")).status,422);assert.equal(attempts,1);
+      attempts=0;context.fetch=async()=>{attempts++;return response({},503);};
+      assert.equal((await run("fetchAPI('/jobs')")).status,503);assert.equal(attempts,2);
+    """)
+
+
 def test_parse_review_baseline_match_roles_gaps_and_no_persistence():
     run_scenario(r"""
       await tick();await parse();

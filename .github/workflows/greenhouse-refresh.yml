@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: greenhouse-refresh
+  group: jobs-snapshot-refresh
   cancel-in-progress: false
 
 jobs:
@@ -36,6 +36,7 @@ jobs:
           --sources-config collector/sources.india.json
           --report data/source-collection-report.json
           --max-posted-age-days 30
+          --preserve-uncollected-sources
           --timeout 20
 
       - name: Verify snapshot is non-empty and deployment-safe
