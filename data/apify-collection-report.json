@@ -1,0 +1,33 @@
+{
+  "boards": [
+    {
+      "source": "naukri",
+      "actor": "valig/naukri-jobs-scraper",
+      "max_total_charge_usd": 0.05,
+      "status": "ok",
+      "jobs": 50,
+      "invalid_jobs": 0,
+      "error": null
+    },
+    {
+      "source": "linkedin",
+      "actor": "valig/linkedin-jobs-scraper",
+      "max_total_charge_usd": 0.05,
+      "status": "ok",
+      "jobs": 50,
+      "invalid_jobs": 0,
+      "error": null
+    },
+    {
+      "source": "indeed",
+      "actor": "valig/indeed-jobs-scraper",
+      "max_total_charge_usd": 0.05,
+      "status": "partial",
+      "jobs": 0,
+      "invalid_jobs": 2,
+      "error": null
+    }
+  ],
+  "jobs": 100,
+  "complete": false
+}

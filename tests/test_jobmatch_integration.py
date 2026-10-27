@@ -67,14 +67,14 @@ def test_real_multisource_snapshot_works_in_both_dashboards(monkeypatch):
     response = client.get("/api/jobs/bengaluru?page_size=100")
     assert response.status_code == 200
     listing = response.json()
-    assert set(listing["facets"]["sources"]) == {"greenhouse", "lever", "ashby"}
+    assert set(listing["facets"]["sources"]) == {"greenhouse", "lever", "ashby", "naukri", "linkedin"}
     for source in listing["facets"]["sources"]:
         filtered = client.get("/api/jobs/bengaluru", params={"source": source}).json()
         assert filtered["total"] > 0
         assert all(job["source"] == source for job in filtered["items"])
     profile = {"skills": ["Python", "SQL"], "titles": ["Software Engineer"]}
     matches = client.post("/api/resume/match", json={"profile": profile, "limit": 100}).json()
-    assert {job["source"] for job in matches["items"]} == {"greenhouse", "lever", "ashby"}
+    assert {job["source"] for job in matches["items"]} == {"greenhouse", "lever", "ashby", "naukri", "linkedin"}
 
 
 def test_existing_production_dataset_setting_migrates_without_overriding_custom_data():
