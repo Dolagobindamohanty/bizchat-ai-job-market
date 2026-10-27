@@ -39,8 +39,9 @@ def assert_job_table_contract(source):
         table,
         re.S,
     )
-    for field in ("title", "company", "source"):
+    for field in ("title", "company"):
         assert f"escapeHTML(j.{field})" in table
+    assert "sourceLabel(j)" in table
     assert "locationLabel(j)" in table
     assert "j.posted||'Posting date unavailable'" in table
     assert 'class="job-row"' in table
