@@ -21,7 +21,7 @@
       "board_token": "databricks",
       "company": "Databricks",
       "status": "ok",
-      "jobs": 87,
+      "jobs": 88,
       "error": null
     },
     {
@@ -37,7 +37,7 @@
       "board_token": "airbnb",
       "company": "Airbnb",
       "status": "ok",
-      "jobs": 12,
+      "jobs": 10,
       "error": null
     },
     {
@@ -53,7 +53,7 @@
       "board_token": "meesho",
       "company": "Meesho",
       "status": "ok",
-      "jobs": 50,
+      "jobs": 52,
       "error": null
     },
     {
@@ -73,6 +73,6 @@
       "error": null
     }
   ],
-  "jobs": 54,
+  "jobs": 59,
   "complete": true
 }
