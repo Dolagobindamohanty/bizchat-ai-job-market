@@ -37,7 +37,7 @@
       "board_token": "airbnb",
       "company": "Airbnb",
       "status": "ok",
-      "jobs": 10,
+      "jobs": 9,
       "error": null
     },
     {
@@ -53,7 +53,7 @@
       "board_token": "meesho",
       "company": "Meesho",
       "status": "ok",
-      "jobs": 52,
+      "jobs": 53,
       "error": null
     },
     {
@@ -61,7 +61,7 @@
       "board_token": "sarvam",
       "company": "Sarvam AI",
       "status": "ok",
-      "jobs": 48,
+      "jobs": 47,
       "error": null
     },
     {
@@ -73,6 +73,6 @@
       "error": null
     }
   ],
-  "jobs": 59,
+  "jobs": 56,
   "complete": true
 }
