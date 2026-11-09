@@ -5,7 +5,7 @@
       "board_token": "coinbase",
       "company": "Coinbase",
       "status": "ok",
-      "jobs": 12,
+      "jobs": 11,
       "error": null
     },
     {
@@ -37,7 +37,7 @@
       "board_token": "airbnb",
       "company": "Airbnb",
       "status": "ok",
-      "jobs": 10,
+      "jobs": 9,
       "error": null
     },
     {
@@ -73,6 +73,6 @@
       "error": null
     }
   ],
-  "jobs": 53,
+  "jobs": 48,
   "complete": true
 }
