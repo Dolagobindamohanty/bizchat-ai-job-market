@@ -5,7 +5,7 @@
       "board_token": "coinbase",
       "company": "Coinbase",
       "status": "ok",
-      "jobs": 10,
+      "jobs": 9,
       "error": null
     },
     {
@@ -13,7 +13,7 @@
       "board_token": "stripe",
       "company": "Stripe",
       "status": "ok",
-      "jobs": 43,
+      "jobs": 44,
       "error": null
     },
     {
@@ -21,7 +21,7 @@
       "board_token": "databricks",
       "company": "Databricks",
       "status": "ok",
-      "jobs": 76,
+      "jobs": 77,
       "error": null
     },
     {
@@ -73,6 +73,6 @@
       "error": null
     }
   ],
-  "jobs": 50,
+  "jobs": 49,
   "complete": true
 }
