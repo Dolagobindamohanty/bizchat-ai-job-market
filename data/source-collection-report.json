@@ -13,7 +13,7 @@
       "board_token": "stripe",
       "company": "Stripe",
       "status": "ok",
-      "jobs": 44,
+      "jobs": 43,
       "error": null
     },
     {
@@ -61,7 +61,7 @@
       "board_token": "sarvam",
       "company": "Sarvam AI",
       "status": "ok",
-      "jobs": 43,
+      "jobs": 39,
       "error": null
     },
     {
@@ -73,6 +73,6 @@
       "error": null
     }
   ],
-  "jobs": 45,
+  "jobs": 46,
   "complete": true
 }
