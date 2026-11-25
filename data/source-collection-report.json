@@ -21,7 +21,7 @@
       "board_token": "databricks",
       "company": "Databricks",
       "status": "ok",
-      "jobs": 73,
+      "jobs": 60,
       "error": null
     },
     {
@@ -45,7 +45,7 @@
       "board_token": "groww",
       "company": "Groww",
       "status": "ok",
-      "jobs": 7,
+      "jobs": 8,
       "error": null
     },
     {
@@ -73,6 +73,6 @@
       "error": null
     }
   ],
-  "jobs": 46,
+  "jobs": 47,
   "complete": true
 }
